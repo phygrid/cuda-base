@@ -1,0 +1,97 @@
+# Phygrid CUDA - Common Base Image
+# Contains shared system dependencies and tools for all inference engines
+# Supports both Intel (x64) and ARM architectures
+
+FROM python:3.11-slim
+
+# Set architecture-aware variables
+ARG TARGETARCH
+ARG TARGETPLATFORM
+
+WORKDIR /app
+
+# Install system dependencies common to all services
+RUN apt-get update && apt-get install -y \
+    # Build tools
+    build-essential \
+    cmake \
+    git \
+    wget \
+    curl \
+    unzip \
+    # Audio processing
+    libasound2-dev \
+    portaudio19-dev \
+    libsndfile1 \
+    ffmpeg \
+    # Image processing
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    # Networking and utilities
+    ca-certificates \
+    # Fix for executable stack issues
+    patchelf \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Upgrade pip and install common Python packages
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install common web framework packages (lightweight versions)
+RUN pip install --no-cache-dir \
+    fastapi==0.104.1 \
+    uvicorn[standard]==0.24.0 \
+    python-multipart==0.0.6 \
+    pydantic==2.5.0 \
+    starlette==0.27.0 \
+    typing-extensions>=4.8.0
+
+# Install common utility packages
+RUN pip install --no-cache-dir \
+    numpy==1.24.4 \
+    pillow==10.1.0 \
+    requests==2.31.0 \
+    aiofiles==23.2.1 \
+    python-dotenv==1.0.0
+
+# Set up common environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Create common directories
+RUN mkdir -p /app/cache /app/models /app/data /app/logs
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+
+# Health check endpoint (services can override)
+COPY --chown=appuser:appuser <<EOF /app/health_check.py
+#!/usr/bin/env python3
+import sys
+print("Base image health check: OK")
+sys.exit(0)
+EOF
+
+RUN chmod +x /app/health_check.py
+
+# Default user
+USER appuser
+
+# Expose common port (services can override)
+EXPOSE 8000
+
+# Default command
+CMD ["python", "/app/health_check.py"]
+
+# Labels for image management
+LABEL maintainer="Phygrid"
+LABEL version="1.0"
+LABEL description="Common CUDA base image for AI inference services"
+LABEL architecture="multi-arch"
