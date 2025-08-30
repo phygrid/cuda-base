@@ -19,8 +19,8 @@ env:
 jobs:
   version-management:
     runs-on:
-      group: dubai-office
-      labels: [self-hosted]
+      - self-hosted
+      - dubai-office
     outputs:
       version: ${{ steps.determine-version.outputs.version }}
       should-build: ${{ steps.check-existing.outputs.should-build }}
@@ -131,8 +131,8 @@ jobs:
     needs: version-management
     if: needs.version-management.outputs.should-build == 'true'
     runs-on:
-      group: dubai-office
-      labels: [self-hosted]
+      - self-hosted
+      - dubai-office
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -218,8 +218,8 @@ jobs:
     needs: [version-management, build-and-deploy]
     if: success()
     runs-on:
-      group: dubai-office
-      labels: [self-hosted]
+      - self-hosted
+      - dubai-office
     steps:
       - name: Notify Success
         run: |
@@ -234,8 +234,8 @@ jobs:
     needs: [version-management, build-and-deploy]
     if: failure()
     runs-on:
-      group: dubai-office
-      labels: [self-hosted]
+      - self-hosted
+      - dubai-office
     steps:
       - name: Notify Failure
         run: |
