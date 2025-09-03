@@ -186,4 +186,4 @@ LABEL org.opencontainers.image.version="1.0.0"
 - **Architectures**: AMD64 (Intel/AMD), ARM64 (NVIDIA Jetson)
 - **Python version**: 3.11 (AMD64), 3.10 (ARM64)
 - **Base OS**: Debian slim (AMD64), Ubuntu 22.04 + CUDA (ARM64)
-- **CUDA version**: 12.6.2 (ARM64 Jetson support)
+- **CUDA version**: 12.8 (ARM64 Jetson support)

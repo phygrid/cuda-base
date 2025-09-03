@@ -5,7 +5,7 @@
 # Use multi-stage build with architecture-specific base images
 ARG TARGETARCH
 FROM python:3.11-slim AS base-amd64
-FROM nvidia/cuda:12.6.2-devel-ubuntu22.04 AS base-arm64
+FROM nvidia/cuda:12.8.1-devel-ubuntu22.04 AS base-arm64
 
 # Select appropriate base based on target architecture  
 FROM base-${TARGETARCH} AS base
