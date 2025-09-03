@@ -119,6 +119,6 @@ CMD ["python", "/app/health_check.py"]
 
 # Labels for image management
 LABEL maintainer="Phygrid"
-LABEL version="v1.0.8"
+LABEL version="v1.0.9"
 LABEL description="Common CUDA base image for AI inference services"
 LABEL architecture="multi-arch"
