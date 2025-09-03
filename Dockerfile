@@ -2,13 +2,29 @@
 # Contains shared system dependencies and tools for all inference engines
 # Supports both Intel (x64) and ARM architectures
 
-FROM python:3.11-slim
+# Use multi-stage build with architecture-specific base images
+ARG TARGETARCH
+FROM python:3.11-slim AS base-amd64
+FROM nvidia/cuda:12.6.2-devel-ubuntu22.04 AS base-arm64
+
+# Select appropriate base based on target architecture  
+FROM base-${TARGETARCH} AS base
 
 # Set architecture-aware variables
 ARG TARGETARCH
 ARG TARGETPLATFORM
 
 WORKDIR /app
+
+# Install Python 3.10 on ARM64 CUDA base (Ubuntu 22.04 already has Python 3.10)
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        apt-get update && apt-get install -y \
+        python3 \
+        python3-dev \
+        python3-venv \
+        python3-pip \
+        && update-alternatives --install /usr/bin/python python /usr/bin/python3 1; \
+    fi
 
 # Install system dependencies common to all services
 RUN apt-get update && apt-get install -y \
@@ -39,10 +55,10 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 # Upgrade pip and install common Python packages
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Install common web framework packages (lightweight versions)
-RUN pip install --no-cache-dir \
+RUN python3 -m pip install --no-cache-dir \
     fastapi==0.104.1 \
     uvicorn[standard]==0.24.0 \
     python-multipart==0.0.6 \
@@ -50,8 +66,8 @@ RUN pip install --no-cache-dir \
     starlette==0.27.0 \
     typing-extensions>=4.8.0
 
-# Install common utility packages
-RUN pip install --no-cache-dir \
+# Install common utility packages with ARM64-compatible versions
+RUN python3 -m pip install --no-cache-dir \
     numpy==1.24.4 \
     pillow==10.1.0 \
     requests==2.31.0 \
@@ -63,6 +79,17 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Set CUDA-specific environment variables for ARM64 Jetson
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        echo 'export PATH=/usr/local/cuda/bin:$PATH' >> /etc/environment && \
+        echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> /etc/environment && \
+        echo 'export CUDA_HOME=/usr/local/cuda' >> /etc/environment; \
+    fi
+
+ENV PATH="/usr/local/cuda/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
+ENV CUDA_HOME="/usr/local/cuda"
 
 # Create common directories
 RUN mkdir -p /app/cache /app/models /app/data /app/logs

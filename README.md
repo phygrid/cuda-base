@@ -5,7 +5,7 @@
 [![Build Status](https://github.com/phygrid/cuda-base/workflows/Build%20and%20Deploy%20Docker%20Image/badge.svg)](https://github.com/phygrid/cuda-base/actions)
 [![License](https://img.shields.io/github/license/phygrid/cuda-base)](LICENSE)
 
-A multi-architecture Docker base image optimized for AI inference services, providing common system dependencies and Python packages for CUDA-accelerated applications.
+A multi-architecture Docker base image optimized for AI inference services, providing common system dependencies and Python packages for CUDA-accelerated applications. Supports both Intel/AMD x64 systems and ARM64 NVIDIA Jetson devices.
 
 ## 🚀 Quick Start
 
@@ -36,7 +36,8 @@ FROM phygrid/cuda-base:1.0.0
 - **Security**: Non-root `appuser` with proper permissions
 - **Structure**: Pre-created `/app/{cache,models,data,logs}` directories
 - **Health check**: Built-in health check endpoint
-- **Multi-arch**: AMD64 and ARM64 support
+- **Multi-arch**: AMD64 (Intel/AMD) and ARM64 (NVIDIA Jetson) support
+- **CUDA**: GPU acceleration for NVIDIA Blackwell and earlier architectures
 - **Port**: Exposes port 8000 (customizable)
 
 ## 🐳 Docker Hub
@@ -76,9 +77,18 @@ docker run -it --rm \
 
 ### Production Deployment
 ```bash
-# Run with GPU support (if available)
+# Run with GPU support (Intel/AMD systems)
 docker run -d \
   --name my-ai-service \
+  --gpus all \
+  -p 8000:8000 \
+  -v /data:/app/data \
+  phygrid/cuda-base:latest
+
+# Run on NVIDIA Jetson devices
+docker run -d \
+  --name my-ai-service \
+  --runtime nvidia \
   --gpus all \
   -p 8000:8000 \
   -v /data:/app/data \
@@ -171,8 +181,9 @@ LABEL org.opencontainers.image.version="1.0.0"
 
 ## 📈 Metrics
 
-- **Image size**: ~800MB compressed
+- **Image size**: ~800MB compressed (AMD64), ~1.2GB (ARM64 with CUDA)
 - **Build time**: ~5-10 minutes (with cache)
-- **Architectures**: AMD64, ARM64
-- **Python version**: 3.11
-- **Base OS**: Debian (Python slim)
+- **Architectures**: AMD64 (Intel/AMD), ARM64 (NVIDIA Jetson)
+- **Python version**: 3.11 (AMD64), 3.10 (ARM64)
+- **Base OS**: Debian slim (AMD64), Ubuntu 22.04 + CUDA (ARM64)
+- **CUDA version**: 12.6.2 (ARM64 Jetson support)
