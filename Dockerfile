@@ -82,13 +82,15 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Set CUDA-specific environment variables for ARM64 Jetson
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        echo "Installing CUDA compatibility libraries for Jetson..."; \
+        apt-get update && apt-get install -y cuda-compat-12-8 && rm -rf /var/lib/apt/lists/*; \
         echo 'export PATH=/usr/local/cuda/bin:$PATH' >> /etc/environment && \
-        echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> /etc/environment && \
+        echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda-12.8/compat:$LD_LIBRARY_PATH' >> /etc/environment && \
         echo 'export CUDA_HOME=/usr/local/cuda' >> /etc/environment; \
     fi
 
 ENV PATH="/usr/local/cuda/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-12.8/compat:${LD_LIBRARY_PATH}"
 ENV CUDA_HOME="/usr/local/cuda"
 
 # Create common directories
