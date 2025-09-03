@@ -50,11 +50,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Upgrade pip and install common Python packages
-RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
+# Upgrade pip and install common Python packages (override PEP 668 for container)
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel --break-system-packages
 
 # Install common web framework packages (lightweight versions)
-RUN python3 -m pip install --no-cache-dir \
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
     fastapi==0.104.1 \
     uvicorn[standard]==0.24.0 \
     python-multipart==0.0.6 \
@@ -63,7 +63,7 @@ RUN python3 -m pip install --no-cache-dir \
     typing-extensions>=4.8.0
 
 # Install common utility packages with ARM64-compatible versions
-RUN python3 -m pip install --no-cache-dir \
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
     numpy==1.24.4 \
     pillow==10.1.0 \
     requests==2.31.0 \
