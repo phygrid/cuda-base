@@ -184,6 +184,6 @@ LABEL org.opencontainers.image.version="1.0.0"
 - **Image size**: ~800MB compressed (AMD64), ~1.2GB (ARM64 with CUDA)
 - **Build time**: ~5-10 minutes (with cache)
 - **Architectures**: AMD64 (Intel/AMD), ARM64 (NVIDIA Jetson)
-- **Python version**: 3.11 (AMD64), 3.10 (ARM64)
-- **Base OS**: Debian slim (AMD64), Ubuntu 22.04 + CUDA (ARM64)
-- **CUDA version**: 12.8 (ARM64 Jetson support)
+- **Python version**: 3.12 (Ubuntu 24.04 default)
+- **Base OS**: Ubuntu 24.04 + CUDA 13.0 (unified for both architectures)
+- **CUDA version**: 13.0.0 with compatibility layer for edge deployment

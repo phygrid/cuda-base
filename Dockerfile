@@ -2,13 +2,9 @@
 # Contains shared system dependencies and tools for all inference engines
 # Supports both Intel (x64) and ARM architectures
 
-# Use multi-stage build with architecture-specific base images
+# Use NVIDIA CUDA Ubuntu 24.04 runtime for minimal edge deployment
 ARG TARGETARCH
-FROM python:3.11-slim AS base-amd64
-FROM nvidia/cuda:12.8.1-devel-ubuntu22.04 AS base-arm64
-
-# Select appropriate base based on target architecture  
-FROM base-${TARGETARCH} AS base
+FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04
 
 # Set architecture-aware variables
 ARG TARGETARCH
@@ -16,15 +12,14 @@ ARG TARGETPLATFORM
 
 WORKDIR /app
 
-# Install Python 3.10 on ARM64 CUDA base (Ubuntu 22.04 already has Python 3.10)
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        apt-get update && apt-get install -y \
-        python3 \
-        python3-dev \
-        python3-venv \
-        python3-pip \
-        && update-alternatives --install /usr/bin/python python /usr/bin/python3 1; \
-    fi
+# Install Python 3.12 and pip (Ubuntu 24.04 default)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-dev \
+    python3-venv \
+    python3-pip \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3 1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install system dependencies common to all services
 RUN apt-get update && apt-get install -y \
@@ -35,6 +30,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     unzip \
+    cuda-compat-13-0 \
     # Audio processing
     libasound2-dev \
     portaudio19-dev \
@@ -80,17 +76,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Set CUDA-specific environment variables for ARM64 Jetson
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        echo "Installing CUDA compatibility libraries for Jetson..."; \
-        apt-get update && apt-get install -y cuda-compat-12-8 && rm -rf /var/lib/apt/lists/*; \
-        echo 'export PATH=/usr/local/cuda/bin:$PATH' >> /etc/environment && \
-        echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda-12.8/compat:$LD_LIBRARY_PATH' >> /etc/environment && \
-        echo 'export CUDA_HOME=/usr/local/cuda' >> /etc/environment; \
-    fi
-
+# Set CUDA environment variables for both architectures
 ENV PATH="/usr/local/cuda/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-12.8/compat:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-13.0/compat:${LD_LIBRARY_PATH}"
 ENV CUDA_HOME="/usr/local/cuda"
 
 # Create common directories
