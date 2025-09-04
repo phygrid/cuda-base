@@ -4,7 +4,7 @@
 
 # Use NVIDIA CUDA Ubuntu 24.04 runtime for minimal edge deployment
 ARG TARGETARCH
-FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04
+FROM nvidia/cuda:12.8.1-runtime-ubuntu24.04
 
 # Set architecture-aware variables
 ARG TARGETARCH
@@ -14,7 +14,7 @@ WORKDIR /app
 
 # Install Python 3.12 and pip (Ubuntu 24.04 default)
 RUN apt-get update && apt-get install -y \
-    python3 \
+    python3-full \
     python3-dev \
     python3-venv \
     python3-pip \
@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     unzip \
-    cuda-compat-13-0 \
+    cuda-compat-12-8 \
     # Audio processing
     libasound2-dev \
     portaudio19-dev \
@@ -50,25 +50,23 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Upgrade pip and install common Python packages (override PEP 668 for container)
-RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel --break-system-packages
+# Skip pip upgrade - Ubuntu 24.04 comes with recent pip version
 
-# Install common web framework packages (lightweight versions)
+# Install common web framework packages (latest compatible versions)
 RUN python3 -m pip install --no-cache-dir --break-system-packages \
-    fastapi==0.104.1 \
-    uvicorn[standard]==0.24.0 \
-    python-multipart==0.0.6 \
-    pydantic==2.5.0 \
-    starlette==0.27.0 \
-    typing-extensions>=4.8.0
+    fastapi \
+    uvicorn[standard] \
+    python-multipart \
+    pydantic \
+    typing-extensions
 
-# Install common utility packages with ARM64-compatible versions
+# Install common utility packages (use latest compatible versions for Python 3.12)
 RUN python3 -m pip install --no-cache-dir --break-system-packages \
-    numpy==1.24.4 \
-    pillow==10.1.0 \
-    requests==2.31.0 \
-    aiofiles==23.2.1 \
-    python-dotenv==1.0.0
+    numpy \
+    pillow \
+    requests \
+    aiofiles \
+    python-dotenv
 
 # Set up common environment variables
 ENV PYTHONUNBUFFERED=1
@@ -78,7 +76,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Set CUDA environment variables for both architectures
 ENV PATH="/usr/local/cuda/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-13.0/compat:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-12.8/compat:${LD_LIBRARY_PATH}"
 ENV CUDA_HOME="/usr/local/cuda"
 
 # Create common directories
