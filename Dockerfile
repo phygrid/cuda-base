@@ -31,12 +31,13 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     git \
     wget \
     curl \
-    # Essential libraries for AI/ML
-    libgl1-mesa-glx \
+    # Essential libraries for AI/ML (Ubuntu 24.04 package names)
+    libgl1 \
+    libglx-mesa0 \
     libglib2.0-0 \
     libgomp1 \
-    # TensorRT dependencies  
-    libprotobuf23 \
+    # TensorRT dependencies
+    libprotobuf32t64 \
     # Networking essentials
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
