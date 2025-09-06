@@ -14,7 +14,7 @@ FROM nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04 AS tensorrt-builder
 
 # Re-declare args for this stage
 ARG TARGETARCH
-ARG TENSORRT_VERSION=10.9.0
+ARG TENSORRT_VERSION=10.13.2
 
 WORKDIR /build
 
@@ -52,8 +52,8 @@ RUN set -ex && \
             ;; \
     esac && \
     \
-    # Try multiple TensorRT download URL patterns
-    TRT_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-${TENSORRT_VERSION}.${TRT_ARCH}.cuda-13.0.cudnn9.1.tar.gz" && \
+    # TensorRT 10.13.2 download URL for CUDA 13.0 support
+    TRT_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.13.2/tars/TensorRT-${TENSORRT_VERSION}.${TRT_ARCH}.cuda-13.0.cudnn9.1.tar.gz" && \
     \
     echo "Attempting TensorRT download from: ${TRT_URL}" && \
     mkdir -p /build/tensorrt && \
@@ -79,7 +79,7 @@ WORKDIR /app
 
 # Re-declare args for final stage
 ARG TARGETARCH
-ARG TENSORRT_VERSION=10.9.0
+ARG TENSORRT_VERSION=10.13.2
 ENV TENSORRT_VERSION=${TENSORRT_VERSION}
 
 # Install only essential runtime dependencies (no build tools!)
