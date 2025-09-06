@@ -47,8 +47,21 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
 ARG TENSORRT_VERSION=10.9.0
 ENV TENSORRT_VERSION=${TENSORRT_VERSION}
 
+# Re-declare TARGETARCH for use in RUN commands
+ARG TARGETARCH
+
 RUN set -ex && \
-    echo "Installing TensorRT for ${TARGETARCH:-unknown} architecture..." && \
+    # Detect architecture if TARGETARCH is not set
+    if [ -z "${TARGETARCH}" ]; then \
+        DETECTED_ARCH=$(uname -m) && \
+        case "${DETECTED_ARCH}" in \
+            "x86_64") TARGETARCH="amd64" ;; \
+            "aarch64") TARGETARCH="arm64" ;; \
+            *) echo "Unsupported detected architecture: ${DETECTED_ARCH}" && exit 1 ;; \
+        esac; \
+    fi && \
+    \
+    echo "Installing TensorRT for ${TARGETARCH} architecture..." && \
     \
     # Download and install TensorRT based on architecture
     case "${TARGETARCH}" in \
