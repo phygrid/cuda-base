@@ -1,112 +1,124 @@
 # Phygrid CUDA - Common Base Image
-# Contains shared system dependencies and tools for all inference engines
+# Contains shared system dependencies and tools for all inference engines  
+# Uses NVIDIA's official CUDA 13.0 with TensorRT runtime for minimal size
 # Supports both Intel (x64) and ARM architectures
 
-# Use NVIDIA CUDA Ubuntu 24.04 runtime for minimal edge deployment
-ARG TARGETARCH
-FROM nvidia/cuda:12.8.1-runtime-ubuntu24.04
-
-# Set architecture-aware variables
-ARG TARGETARCH
+# Multi-stage build args for proper cross-platform support
 ARG TARGETPLATFORM
+ARG TARGETOS  
+ARG TARGETARCH
+ARG TARGETVARIANT
+
+# Use NVIDIA CUDA 13.0 TensorRT runtime for minimal edge deployment
+FROM --platform=$TARGETPLATFORM nvidia/cuda:13.0.0-tensorrt-runtime-ubuntu24.04
 
 WORKDIR /app
 
-# Install Python 3.12 and pip (Ubuntu 24.04 default)
-RUN apt-get update && apt-get install -y \
-    python3-full \
-    python3-dev \
-    python3-venv \
+# Install minimal Python 3.12 setup (Ubuntu 24.04 default)
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    python3-minimal \
     python3-pip \
-    && update-alternatives --install /usr/bin/python python /usr/bin/python3 1 \
-    && rm -rf /var/lib/apt/lists/*
+    python3-dev \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Install system dependencies common to all services
-RUN apt-get update && apt-get install -y \
-    # Build tools
+# Install only essential system dependencies for AI services
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    # Essential build tools (minimal)
     build-essential \
     cmake \
     git \
     wget \
     curl \
-    unzip \
-    cuda-compat-12-8 \
-    # Audio processing
-    libasound2-dev \
-    portaudio19-dev \
-    libsndfile1 \
-    ffmpeg \
-    # Image processing
-    libgl1 \
+    # Essential libraries for AI/ML
+    libgl1-mesa-glx \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
     libgomp1 \
-    # Networking and utilities
+    # Networking essentials
     ca-certificates \
-    # Fix for executable stack issues
-    patchelf \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Skip pip upgrade - Ubuntu 24.04 comes with recent pip version
-
-# Install common web framework packages (latest compatible versions)
-RUN python3 -m pip install --no-cache-dir --break-system-packages \
+# Install minimal common Python packages (no caching for smaller image)
+RUN python -m pip install --no-cache-dir --break-system-packages \
     fastapi \
     uvicorn[standard] \
-    python-multipart \
     pydantic \
-    typing-extensions
-
-# Install common utility packages (use latest compatible versions for Python 3.12)
-RUN python3 -m pip install --no-cache-dir --break-system-packages \
     numpy \
     pillow \
-    requests \
-    aiofiles \
-    python-dotenv
+    requests
 
-# Set up common environment variables
+# Set up optimized environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONDONTWRITEBYTECODE=1  
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Set CUDA environment variables for both architectures
-ENV PATH="/usr/local/cuda/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-12.8/compat:${LD_LIBRARY_PATH}"
+# CUDA environment (inherits from base image)
 ENV CUDA_HOME="/usr/local/cuda"
+ENV PATH="/usr/local/cuda/bin:${PATH}"
 
-# Create common directories
-RUN mkdir -p /app/cache /app/models /app/data /app/logs
+# Create essential directories only
+RUN mkdir -p /app/cache
 
 # Create non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r appuser && useradd -r -g appuser -m appuser
 RUN chown -R appuser:appuser /app
 
-# Health check endpoint (services can override)
-COPY --chown=appuser:appuser <<EOF /app/health_check.py
+# Minimal health check
+COPY --chown=appuser:appuser <<'PY' /app/health_check.py
 #!/usr/bin/env python3
 import sys
-print("Base image health check: OK")
-sys.exit(0)
-EOF
+import os
+
+def check_health():
+    print("=== Phygrid CUDA Base Health Check ===")
+    
+    # Check Python
+    print(f"✓ Python version: {sys.version.split()[0]}")
+    
+    # Check CUDA
+    cuda_version = os.environ.get('CUDA_VERSION', 'unknown')
+    print(f"✓ CUDA version: {cuda_version}")
+    
+    # Check TensorRT (from base image)
+    try:
+        import ctypes
+        # Try to load TensorRT library
+        ctypes.CDLL('/usr/lib/x86_64-linux-gnu/libnvinfer.so.8', mode=ctypes.RTLD_GLOBAL)
+        print("✓ TensorRT runtime available")
+    except:
+        print("⚠ TensorRT runtime not found")
+    
+    # Check essential Python packages
+    try:
+        import numpy, requests, fastapi, uvicorn, pydantic, PIL
+        print("✓ Essential Python packages installed")
+    except ImportError as e:
+        print(f"❌ Missing package: {e}")
+        return 1
+    
+    print("✅ Base image health check passed")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(check_health())
+PY
 
 RUN chmod +x /app/health_check.py
 
-# Default user
+# Switch to non-root user
 USER appuser
 
-# Expose common port (services can override)
+# Expose common port
 EXPOSE 8000
 
 # Default command
 CMD ["python", "/app/health_check.py"]
 
-# Labels for image management
+# Optimized labels
 LABEL maintainer="Phygrid"
-LABEL version="v1.0.13"
-LABEL description="Common CUDA base image for AI inference services"
+LABEL base="nvidia/cuda:13.0.0-tensorrt-runtime-ubuntu24.04"
+LABEL description="Minimal CUDA base image with TensorRT runtime for AI inference"
 LABEL architecture="multi-arch"
