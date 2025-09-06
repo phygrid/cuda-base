@@ -1,6 +1,6 @@
 # Phygrid CUDA - Common Base Image
-# Contains shared system dependencies and tools for all inference engines  
-# Uses NVIDIA's official CUDA 13.0 with TensorRT runtime for minimal size
+# Multi-stage build to minimize final image size
+# Uses NVIDIA CUDA 13.0 cuDNN runtime + TensorRT runtime libraries only
 # Supports both Intel (x64) and ARM architectures
 
 # Multi-stage build args for proper cross-platform support
@@ -9,47 +9,23 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
 
-# Use NVIDIA CUDA 13.0 cuDNN runtime, then install TensorRT ourselves  
-FROM nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04
+# ====== BUILD STAGE: TensorRT Download & Extract ======
+FROM nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04 AS tensorrt-builder
 
-WORKDIR /app
+# Re-declare args for this stage
+ARG TARGETARCH
+ARG TENSORRT_VERSION=10.9.0
 
-# Install minimal Python 3.12 setup (Ubuntu 24.04 default)
+WORKDIR /build
+
+# Install minimal tools needed for download and extraction only
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    python3-minimal \
-    python3-pip \
-    python3-dev \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-# Install essential system dependencies and TensorRT
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    # Essential build tools (minimal)
-    build-essential \
-    cmake \
-    git \
     wget \
     curl \
-    # Essential libraries for AI/ML (Ubuntu 24.04 package names)
-    libgl1 \
-    libglx-mesa0 \
-    libglib2.0-0 \
-    libgomp1 \
-    # TensorRT dependencies
-    libprotobuf32t64 \
-    # Networking essentials
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
-# -------- Install TensorRT (multi-arch aware) --------
-ARG TENSORRT_VERSION=10.9.0
-ENV TENSORRT_VERSION=${TENSORRT_VERSION}
-
-# Re-declare TARGETARCH for use in RUN commands
-ARG TARGETARCH
-
+# Download and extract TensorRT (architecture-aware)
 RUN set -ex && \
     # Detect architecture if TARGETARCH is not set
     if [ -z "${TARGETARCH}" ]; then \
@@ -61,9 +37,9 @@ RUN set -ex && \
         esac; \
     fi && \
     \
-    echo "Installing TensorRT for ${TARGETARCH} architecture..." && \
+    echo "Building TensorRT for ${TARGETARCH} architecture..." && \
     \
-    # Download and install TensorRT based on architecture
+    # Set architecture-specific package name
     case "${TARGETARCH}" in \
         "amd64") \
             TRT_ARCH="Linux.x86_64-gnu" \
@@ -80,33 +56,63 @@ RUN set -ex && \
     TRT_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-${TENSORRT_VERSION}.${TRT_ARCH}.cuda-13.0.cudnn9.1.tar.gz" && \
     \
     echo "Attempting TensorRT download from: ${TRT_URL}" && \
-    mkdir -p /opt/tensorrt && \
+    mkdir -p /build/tensorrt && \
     \
-    # Download with fallback options
-    if wget --timeout=30 --tries=2 --no-check-certificate -O /tmp/tensorrt.tar.gz "${TRT_URL}"; then \
+    # Download with timeout and retry
+    if wget --timeout=60 --tries=3 --no-check-certificate -O /tmp/tensorrt.tar.gz "${TRT_URL}"; then \
         echo "✓ TensorRT download successful" && \
-        tar -xzf /tmp/tensorrt.tar.gz -C /opt/tensorrt --strip-components=1 && \
+        tar -xzf /tmp/tensorrt.tar.gz -C /build/tensorrt --strip-components=1 && \
         rm /tmp/tensorrt.tar.gz && \
-        echo "✓ TensorRT extracted successfully"; \
+        echo "✓ TensorRT extracted successfully" && \
+        ls -la /build/tensorrt/; \
     else \
         echo "⚠️  TensorRT download failed - creating minimal structure" && \
         echo "   In production, manually download TensorRT from:" && \
         echo "   https://developer.nvidia.com/tensorrt" && \
-        mkdir -p /opt/tensorrt/lib /opt/tensorrt/python /opt/tensorrt/bin /opt/tensorrt/include; \
-    fi && \
-    \
-    # Install TensorRT Python wheels if available
-    if [ -d "/opt/tensorrt/python" ] && [ "$(ls -A /opt/tensorrt/python/*.whl 2>/dev/null)" ]; then \
+        mkdir -p /build/tensorrt/lib /build/tensorrt/python /build/tensorrt/bin /build/tensorrt/include; \
+    fi
+
+# ====== FINAL STAGE: Runtime Image ======
+FROM nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04
+
+WORKDIR /app
+
+# Re-declare args for final stage
+ARG TARGETARCH
+ARG TENSORRT_VERSION=10.9.0
+ENV TENSORRT_VERSION=${TENSORRT_VERSION}
+
+# Install only essential runtime dependencies (no build tools!)
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    # Minimal Python setup
+    python3-minimal \
+    python3-pip \
+    python3-dev \
+    # Essential runtime libraries only (no cmake, build-essential, etc.)
+    libgl1 \
+    libglx-mesa0 \
+    libglib2.0-0 \
+    libgomp1 \
+    # TensorRT runtime dependencies
+    libprotobuf32t64 \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy TensorRT runtime files from build stage
+COPY --from=tensorrt-builder /build/tensorrt/lib /opt/tensorrt/lib
+COPY --from=tensorrt-builder /build/tensorrt/python /opt/tensorrt/python
+COPY --from=tensorrt-builder /build/tensorrt/bin /opt/tensorrt/bin
+COPY --from=tensorrt-builder /build/tensorrt/include /opt/tensorrt/include
+
+# Install TensorRT Python wheels (only runtime files copied)
+RUN if [ -d "/opt/tensorrt/python" ] && [ "$(ls -A /opt/tensorrt/python/*.whl 2>/dev/null)" ]; then \
         echo "Installing TensorRT Python wheels..." && \
         python -m pip install --no-cache-dir --break-system-packages /opt/tensorrt/python/*.whl || \
         echo "⚠️  TensorRT Python wheel installation failed"; \
     else \
         echo "⚠️  No TensorRT Python wheels found"; \
     fi
-
-# Set TensorRT environment
-ENV TRT_ROOT=/opt/tensorrt
-ENV LD_LIBRARY_PATH="/opt/tensorrt/lib:${LD_LIBRARY_PATH}"
 
 # Install minimal common Python packages (no caching for smaller image)
 RUN python -m pip install --no-cache-dir --break-system-packages \
@@ -127,14 +133,18 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV CUDA_HOME="/usr/local/cuda"
 ENV PATH="/usr/local/cuda/bin:${PATH}"
 
+# Set TensorRT environment
+ENV TRT_ROOT=/opt/tensorrt
+ENV LD_LIBRARY_PATH="/opt/tensorrt/lib:${LD_LIBRARY_PATH}"
+
 # Create essential directories only
 RUN mkdir -p /app/cache
 
 # Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser -m appuser
-RUN chown -R appuser:appuser /app
+RUN chown -R appuser:appuser /app /opt/tensorrt
 
-# Minimal health check
+# Optimized health check (architecture-aware)
 COPY --chown=appuser:appuser <<'PY' /app/health_check.py
 #!/usr/bin/env python3
 import sys
@@ -221,6 +231,8 @@ CMD ["python", "/app/health_check.py"]
 
 # Optimized labels
 LABEL maintainer="Phygrid"
-LABEL base="nvidia/cuda:13.0.0-tensorrt-runtime-ubuntu24.04"
-LABEL description="Minimal CUDA base image with TensorRT runtime for AI inference"
+LABEL base="nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04"
+LABEL tensorrt.version="${TENSORRT_VERSION}"
+LABEL description="Minimal CUDA base with TensorRT runtime for AI inference (multi-stage optimized)"
 LABEL architecture="multi-arch"
+LABEL build.stage="optimized"
