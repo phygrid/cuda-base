@@ -10,7 +10,7 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 
 # Use NVIDIA CUDA 13.0 TensorRT runtime for minimal edge deployment
-FROM --platform=$TARGETPLATFORM nvidia/cuda:13.0.0-tensorrt-runtime-ubuntu24.04
+FROM nvidia/cuda:13.0.0-tensorrt-runtime-ubuntu24.04
 
 WORKDIR /app
 
@@ -82,14 +82,22 @@ def check_health():
     cuda_version = os.environ.get('CUDA_VERSION', 'unknown')
     print(f"✓ CUDA version: {cuda_version}")
     
-    # Check TensorRT (from base image)
+    # Check TensorRT (from base image) - architecture aware
     try:
         import ctypes
-        # Try to load TensorRT library
-        ctypes.CDLL('/usr/lib/x86_64-linux-gnu/libnvinfer.so.8', mode=ctypes.RTLD_GLOBAL)
+        import platform
+        arch = platform.machine()
+        if arch == 'x86_64':
+            lib_path = '/usr/lib/x86_64-linux-gnu/libnvinfer.so.8'
+        elif arch == 'aarch64':
+            lib_path = '/usr/lib/aarch64-linux-gnu/libnvinfer.so.8'
+        else:
+            lib_path = '/usr/lib/x86_64-linux-gnu/libnvinfer.so.8'  # fallback
+        
+        ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
         print("✓ TensorRT runtime available")
-    except:
-        print("⚠ TensorRT runtime not found")
+    except Exception as e:
+        print(f"⚠ TensorRT runtime not found: {e}")
     
     # Check essential Python packages
     try:
