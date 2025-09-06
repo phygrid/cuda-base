@@ -95,6 +95,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     libgomp1 \
     # TensorRT runtime dependencies
     libprotobuf32t64 \
+    # CUDA compatibility package
+    cuda-compat-13-0 \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
