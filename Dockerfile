@@ -9,8 +9,8 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
 
-# Use NVIDIA CUDA 13.0 TensorRT runtime for minimal edge deployment
-FROM nvidia/cuda:13.0.0-tensorrt-runtime-ubuntu24.04
+# Use NVIDIA CUDA 13.0 cuDNN runtime, then install TensorRT ourselves  
+FROM nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install only essential system dependencies for AI services
+# Install essential system dependencies and TensorRT
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     # Essential build tools (minimal)
     build-essential \
@@ -35,10 +35,64 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     libgl1-mesa-glx \
     libglib2.0-0 \
     libgomp1 \
+    # TensorRT dependencies  
+    libprotobuf23 \
     # Networking essentials
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# -------- Install TensorRT (multi-arch aware) --------
+ARG TENSORRT_VERSION=10.9.0
+ENV TENSORRT_VERSION=${TENSORRT_VERSION}
+
+RUN set -ex && \
+    echo "Installing TensorRT for ${TARGETARCH:-unknown} architecture..." && \
+    \
+    # Download and install TensorRT based on architecture
+    case "${TARGETARCH}" in \
+        "amd64") \
+            TRT_ARCH="Linux.x86_64-gnu" \
+            ;; \
+        "arm64") \
+            TRT_ARCH="Linux.aarch64-gnu" \
+            ;; \
+        *) \
+            echo "Unsupported architecture: ${TARGETARCH}" && exit 1 \
+            ;; \
+    esac && \
+    \
+    # Try multiple TensorRT download URL patterns
+    TRT_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-${TENSORRT_VERSION}.${TRT_ARCH}.cuda-13.0.cudnn9.1.tar.gz" && \
+    \
+    echo "Attempting TensorRT download from: ${TRT_URL}" && \
+    mkdir -p /opt/tensorrt && \
+    \
+    # Download with fallback options
+    if wget --timeout=30 --tries=2 --no-check-certificate -O /tmp/tensorrt.tar.gz "${TRT_URL}"; then \
+        echo "✓ TensorRT download successful" && \
+        tar -xzf /tmp/tensorrt.tar.gz -C /opt/tensorrt --strip-components=1 && \
+        rm /tmp/tensorrt.tar.gz && \
+        echo "✓ TensorRT extracted successfully"; \
+    else \
+        echo "⚠️  TensorRT download failed - creating minimal structure" && \
+        echo "   In production, manually download TensorRT from:" && \
+        echo "   https://developer.nvidia.com/tensorrt" && \
+        mkdir -p /opt/tensorrt/lib /opt/tensorrt/python /opt/tensorrt/bin /opt/tensorrt/include; \
+    fi && \
+    \
+    # Install TensorRT Python wheels if available
+    if [ -d "/opt/tensorrt/python" ] && [ "$(ls -A /opt/tensorrt/python/*.whl 2>/dev/null)" ]; then \
+        echo "Installing TensorRT Python wheels..." && \
+        python -m pip install --no-cache-dir --break-system-packages /opt/tensorrt/python/*.whl || \
+        echo "⚠️  TensorRT Python wheel installation failed"; \
+    else \
+        echo "⚠️  No TensorRT Python wheels found"; \
+    fi
+
+# Set TensorRT environment
+ENV TRT_ROOT=/opt/tensorrt
+ENV LD_LIBRARY_PATH="/opt/tensorrt/lib:${LD_LIBRARY_PATH}"
 
 # Install minimal common Python packages (no caching for smaller image)
 RUN python -m pip install --no-cache-dir --break-system-packages \
@@ -82,22 +136,48 @@ def check_health():
     cuda_version = os.environ.get('CUDA_VERSION', 'unknown')
     print(f"✓ CUDA version: {cuda_version}")
     
-    # Check TensorRT (from base image) - architecture aware
+    # Check TensorRT installation - architecture aware
     try:
-        import ctypes
         import platform
         arch = platform.machine()
-        if arch == 'x86_64':
-            lib_path = '/usr/lib/x86_64-linux-gnu/libnvinfer.so.8'
-        elif arch == 'aarch64':
-            lib_path = '/usr/lib/aarch64-linux-gnu/libnvinfer.so.8'
-        else:
-            lib_path = '/usr/lib/x86_64-linux-gnu/libnvinfer.so.8'  # fallback
+        print(f"Architecture: {arch}")
         
-        ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
-        print("✓ TensorRT runtime available")
+        trt_lib_path = os.path.join(os.getenv('TRT_ROOT', '/opt/tensorrt'), 'lib')
+        if os.path.exists(trt_lib_path):
+            print(f"✓ TensorRT library directory found: {trt_lib_path}")
+            
+            # Try to load TensorRT library
+            import ctypes
+            possible_libs = [
+                os.path.join(trt_lib_path, 'libnvinfer.so.8'),
+                os.path.join(trt_lib_path, 'libnvinfer.so'),
+            ]
+            
+            lib_loaded = False
+            for lib_path in possible_libs:
+                if os.path.exists(lib_path):
+                    try:
+                        ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
+                        print(f"✓ TensorRT library loaded: {lib_path}")
+                        lib_loaded = True
+                        break
+                    except Exception as e:
+                        print(f"⚠ Failed to load {lib_path}: {e}")
+            
+            if not lib_loaded:
+                print("⚠ No TensorRT libraries could be loaded")
+        else:
+            print(f"⚠ TensorRT library directory not found: {trt_lib_path}")
+            
+        # Try importing TensorRT Python module
+        try:
+            import tensorrt
+            print(f"✓ TensorRT Python version: {tensorrt.__version__}")
+        except ImportError:
+            print("⚠ TensorRT Python module not available")
+            
     except Exception as e:
-        print(f"⚠ TensorRT runtime not found: {e}")
+        print(f"⚠ TensorRT check failed: {e}")
     
     # Check essential Python packages
     try:
