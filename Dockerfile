@@ -10,11 +10,11 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 
 # ====== BUILD STAGE: TensorRT Download & Extract ======
-FROM nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04 AS tensorrt-builder
+FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04 AS tensorrt-builder
 
 # Re-declare args for this stage
 ARG TARGETARCH
-ARG TENSORRT_VERSION=10.13.2
+ARG TENSORRT_VERSION=10.13.2.6
 
 WORKDIR /build
 
@@ -72,18 +72,18 @@ RUN set -ex && \
         mkdir -p /build/tensorrt/lib /build/tensorrt/python /build/tensorrt/bin /build/tensorrt/include; \
     fi
 
-# ====== FINAL STAGE: Runtime Image ======
-FROM nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04
+# ====== FINAL STAGE: Runtime Image ======  
+FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04
 
 WORKDIR /app
 
 # Re-declare args for final stage
 ARG TARGETARCH
-ARG TENSORRT_VERSION=10.13.2
+ARG TENSORRT_VERSION=10.13.2.6
 ENV TENSORRT_VERSION=${TENSORRT_VERSION}
 
-# Install only essential runtime dependencies (no build tools!)
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+# Install essential runtime dependencies + CUDA math libraries for TensorRT
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-change-held-packages \
     # Minimal Python setup
     python3-minimal \
     python3-pip \
@@ -95,6 +95,14 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     libgomp1 \
     # TensorRT runtime dependencies
     libprotobuf32t64 \
+    # CUDA math libraries required for TensorRT
+    libcublas-13-0 \
+    libcurand-13-0 \
+    libcusparse-13-0 \
+    libcusolver-13-0 \
+    libcufft-13-0 \
+    # cuDNN for neural network operations
+    libcudnn9-cuda-13 \
     # CUDA compatibility package
     cuda-compat-13-0 \
     && ln -sf /usr/bin/python3 /usr/bin/python \
