@@ -131,9 +131,15 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# CUDA environment (inherits from base image)
+# CUDA environment (inherits from base image) with compatibility support
 ENV CUDA_HOME="/usr/local/cuda"
 ENV PATH="/usr/local/cuda/bin:${PATH}"
+
+# Enable CUDA compatibility for older host drivers
+ENV CUDA_COMPAT_PATH="/usr/local/cuda-13.0/compat"
+ENV LD_LIBRARY_PATH="/usr/local/cuda-13.0/compat:${LD_LIBRARY_PATH}"
+ENV NVIDIA_DISABLE_REQUIRE=true
+ENV NVIDIA_REQUIRE_CUDA="cuda>=11.0"
 
 # Set TensorRT environment
 ENV TRT_ROOT=/opt/tensorrt
