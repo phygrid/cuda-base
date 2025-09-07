@@ -1,6 +1,6 @@
 # Phygrid CUDA - Common Base Image
 # Multi-stage build to minimize final image size
-# Uses NVIDIA CUDA 13.0 cuDNN runtime + TensorRT runtime libraries only
+# Uses NVIDIA CUDA 12.9 cuDNN runtime + TensorRT runtime libraries only
 # Supports both Intel (x64) and ARM architectures
 
 # Multi-stage build args for proper cross-platform support
@@ -10,11 +10,11 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 
 # ====== BUILD STAGE: TensorRT Download & Extract ======
-FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04 AS tensorrt-builder
+FROM nvidia/cuda:12.9.0-runtime-ubuntu24.04 AS tensorrt-builder
 
 # Re-declare args for this stage
 ARG TARGETARCH
-ARG TENSORRT_VERSION=10.13.2.6
+ARG TENSORRT_VERSION=10.9.0.34
 
 WORKDIR /build
 
@@ -52,8 +52,8 @@ RUN set -ex && \
             ;; \
     esac && \
     \
-    # TensorRT 10.13.2 download URL for CUDA 13.0 support
-    TRT_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.13.2/tars/TensorRT-${TENSORRT_VERSION}.${TRT_ARCH}.cuda-13.0.cudnn9.1.tar.gz" && \
+    # TensorRT 10.9.0 download URL for CUDA 12.9 support
+    TRT_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-10.9.0.34.${TRT_ARCH}.cuda-12.8.tar.gz" && \
     \
     echo "Attempting TensorRT download from: ${TRT_URL}" && \
     mkdir -p /build/tensorrt && \
@@ -73,13 +73,13 @@ RUN set -ex && \
     fi
 
 # ====== FINAL STAGE: Runtime Image ======  
-FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04
+FROM nvidia/cuda:12.9.0-runtime-ubuntu24.04
 
 WORKDIR /app
 
 # Re-declare args for final stage
 ARG TARGETARCH
-ARG TENSORRT_VERSION=10.13.2.6
+ARG TENSORRT_VERSION=10.9.0.34
 ENV TENSORRT_VERSION=${TENSORRT_VERSION}
 
 # Install essential runtime dependencies + CUDA math libraries for TensorRT
@@ -95,16 +95,16 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-
     libgomp1 \
     # TensorRT runtime dependencies
     libprotobuf32t64 \
-    # CUDA math libraries required for TensorRT
-    libcublas-13-0 \
-    libcurand-13-0 \
-    libcusparse-13-0 \
-    libcusolver-13-0 \
-    libcufft-13-0 \
+    # CUDA math libraries required for TensorRT (CUDA 12.9)
+    libcublas-12-9 \
+    libcurand-12-9 \
+    libcusparse-12-9 \
+    libcusolver-12-9 \
+    libcufft-12-9 \
     # cuDNN for neural network operations
-    libcudnn9-cuda-13 \
-    # CUDA compatibility package
-    cuda-compat-13-0 \
+    libcudnn9-cuda-12 \
+    # CUDA compatibility package for hosts with earlier CUDA versions  
+    cuda-compat-12-9 \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -143,9 +143,9 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV CUDA_HOME="/usr/local/cuda"
 ENV PATH="/usr/local/cuda/bin:${PATH}"
 
-# Enable CUDA compatibility for older host drivers
-ENV CUDA_COMPAT_PATH="/usr/local/cuda-13.0/compat"
-ENV LD_LIBRARY_PATH="/usr/local/cuda-13.0/compat:${LD_LIBRARY_PATH}"
+# CUDA 12.9 environment with compatibility for earlier host versions
+ENV CUDA_COMPAT_PATH="/usr/local/cuda-12.9/compat"
+ENV LD_LIBRARY_PATH="/usr/local/cuda-12.9/compat:/usr/local/cuda-12.9/targets/x86_64-linux/lib:${LD_LIBRARY_PATH}"
 ENV NVIDIA_DISABLE_REQUIRE=true
 ENV NVIDIA_REQUIRE_CUDA="cuda>=11.0"
 
