@@ -154,10 +154,14 @@ RUN cd ffmpeg && \
 RUN cd ffmpeg && \
     echo "=== FFmpeg Installation Phase ===" && \
     make install && \
-    echo "=== Verifying FFmpeg installation ===" && \
-    test -f /opt/ffmpeg/bin/ffmpeg || (echo "ERROR: ffmpeg binary missing after install" && exit 1) && \
-    test -d /opt/ffmpeg/lib || (echo "ERROR: ffmpeg lib directory missing" && exit 1) && \
-    ls -la /opt/ffmpeg/bin/ffmpeg && \
+    echo "=== Debugging FFmpeg installation location ===" && \
+    find /opt -name "ffmpeg" -type f 2>/dev/null | head -10 && \
+    find /usr/local -name "ffmpeg" -type f 2>/dev/null | head -10 && \
+    ls -la /opt/ && \
+    echo "=== Verifying expected FFmpeg installation ===" && \
+    test -f /opt/ffmpeg/bin/ffmpeg || (echo "ERROR: ffmpeg binary missing at /opt/ffmpeg/bin/ffmpeg" && exit 1) && \
+    test -d /opt/ffmpeg/lib || (echo "ERROR: ffmpeg lib directory missing at /opt/ffmpeg/lib" && exit 1) && \
+    ls -la /opt/ffmpeg/ && \
     /opt/ffmpeg/bin/ffmpeg -version 2>&1 | head -3 && \
     echo "=== FFmpeg build SUCCESSFUL ===" && \
     cd .. && rm -rf ffmpeg
