@@ -100,9 +100,27 @@ RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git \
     && make install \
     && cd .. && rm -rf nv-codec-headers
 
-# Download and compile FFmpeg with CUDA acceleration
-RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git \
-    && cd ffmpeg \
+# Download and compile FFmpeg with CUDA acceleration (with retry logic)
+RUN set -e && \
+    # Try git clone with retries, fall back to wget if needed
+    for i in 1 2 3; do \
+        if git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git; then \
+            echo "Git clone successful on attempt $i"; \
+            break; \
+        else \
+            echo "Git clone failed on attempt $i, retrying..."; \
+            rm -rf ffmpeg; \
+            sleep 5; \
+        fi; \
+        if [ $i -eq 3 ]; then \
+            echo "Git clone failed after 3 attempts, trying wget..."; \
+            wget -O ffmpeg.tar.gz https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz && \
+            tar -xzf ffmpeg.tar.gz && \
+            mv FFmpeg-master ffmpeg && \
+            rm ffmpeg.tar.gz; \
+        fi; \
+    done && \
+    cd ffmpeg \
     && ./configure \
         --prefix=/opt/ffmpeg \
         --pkg-config-flags="--static" \
