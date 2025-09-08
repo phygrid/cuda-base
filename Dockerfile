@@ -96,7 +96,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     libtheora-dev \
     libass-dev \
     libfreetype6-dev \
-    libgnutls28-dev \
+    libssl-dev \
     librtmp-dev \
     libsrtp2-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -135,7 +135,7 @@ RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git \
         --enable-libtheora \
         --enable-libass \
         --enable-libfreetype \
-        --enable-gnutls \
+        --enable-openssl \
         --enable-librtmp \
         --disable-debug \
         --disable-doc \
@@ -196,7 +196,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-
     libtheora0 \
     libass9 \
     libfreetype6 \
-    libgnutls30t64 \
+    libssl3t64 \
     librtmp1 \
     libsrtp2-1 \
     # TensorRT runtime dependencies
