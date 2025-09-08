@@ -97,7 +97,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     libass-dev \
     libfreetype6-dev \
     libssl-dev \
-    librtmp-dev \
     libsrtp2-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -136,7 +135,6 @@ RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git \
         --enable-libass \
         --enable-libfreetype \
         --enable-openssl \
-        --enable-librtmp \
         --disable-debug \
         --disable-doc \
         --disable-static \
@@ -197,7 +195,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-
     libass9 \
     libfreetype6 \
     libssl3t64 \
-    librtmp1 \
     libsrtp2-1 \
     # TensorRT runtime dependencies
     libprotobuf32t64 \
