@@ -99,11 +99,11 @@ RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git \
     && make install \
     && cd .. && rm -rf nv-codec-headers
 
-# Download and compile FFmpeg step by step with error checking
-RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git
-
-# Configure FFmpeg with verbose output to debug failures
-RUN cd ffmpeg && \
+# Download and compile FFmpeg with mandatory success verification
+RUN set -ex && \
+    echo "=== Downloading FFmpeg source ===" && \
+    git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git && \
+    cd ffmpeg && \
     echo "=== FFmpeg Configure Phase ===" && \
     ./configure \
         --prefix=/opt/ffmpeg \
@@ -117,24 +117,19 @@ RUN cd ffmpeg && \
         --enable-cuvid \
         --enable-nvenc \
         --enable-libx264 \
-        --enable-libvpx && \
-    echo "=== Configure completed successfully ==="
-
-# Compile FFmpeg with limited parallelism to avoid resource issues
-RUN cd ffmpeg && \
-    echo "=== FFmpeg Compilation Phase ===" && \
-    make -j4 && \
-    echo "=== Compilation completed successfully ==="
-
-# Install FFmpeg and verify
-RUN cd ffmpeg && \
-    echo "=== FFmpeg Installation Phase ===" && \
+        --enable-libvpx \
+        --enable-libopus \
+        --enable-libvorbis \
+        --enable-openssl && \
+    echo "=== Configure SUCCESS - starting compilation ===" && \
+    make -j2 && \
+    echo "=== Compilation SUCCESS - installing ===" && \
     make install && \
-    echo "=== Verifying FFmpeg installation ===" && \
-    ls -la /opt/ffmpeg/bin/ && \
-    ls -la /opt/ffmpeg/lib/ && \
-    /opt/ffmpeg/bin/ffmpeg -version | head -5 && \
-    echo "=== FFmpeg build complete ===" && \
+    echo "=== Verifying installation ===" && \
+    test -f /opt/ffmpeg/bin/ffmpeg || (echo "ERROR: ffmpeg binary not found" && exit 1) && \
+    test -d /opt/ffmpeg/lib || (echo "ERROR: ffmpeg lib dir not found" && exit 1) && \
+    /opt/ffmpeg/bin/ffmpeg -version | head -3 && \
+    echo "=== FFmpeg BUILD SUCCESSFUL ===" && \
     cd .. && rm -rf ffmpeg
 
 # ====== STAGE: PyAV Builder ======
