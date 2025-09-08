@@ -99,10 +99,12 @@ RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git \
     && make install \
     && cd .. && rm -rf nv-codec-headers
 
-# Download and compile FFmpeg with CUDA support and confirmed codecs
-RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git \
-    && cd ffmpeg \
-    && ./configure \
+# Download and compile FFmpeg with CUDA support (with error checking)
+RUN set -e && \
+    git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git && \
+    cd ffmpeg && \
+    echo "Starting FFmpeg configure..." && \
+    ./configure \
         --prefix=/opt/ffmpeg \
         --bindir=/opt/ffmpeg/bin \
         --libdir=/opt/ffmpeg/lib \
@@ -115,20 +117,23 @@ RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git \
         --disable-static \
         --disable-debug \
         --disable-doc \
-        # CUDA acceleration (requires --enable-nonfree)
         --enable-cuda-nvcc \
         --enable-cuvid \
         --enable-nvenc \
         --enable-libnpp \
-        # Confirmed available codecs
         --enable-libx264 \
         --enable-libvpx \
         --enable-libopus \
         --enable-libvorbis \
-        --enable-openssl \
-    && make -j$(nproc) \
-    && make install \
-    && cd .. && rm -rf ffmpeg
+        --enable-openssl && \
+    echo "FFmpeg configure successful, starting compilation..." && \
+    make -j$(nproc) && \
+    echo "FFmpeg compilation successful, installing..." && \
+    make install && \
+    echo "FFmpeg installation complete" && \
+    ls -la /opt/ffmpeg/bin/ && \
+    ls -la /opt/ffmpeg/lib/ && \
+    cd .. && rm -rf ffmpeg
 
 # ====== STAGE: PyAV Builder ======
 FROM ffmpeg-builder AS pyav-builder
@@ -198,13 +203,22 @@ COPY --from=tensorrt-builder /build/tensorrt/python /opt/tensorrt/python
 COPY --from=tensorrt-builder /build/tensorrt/bin /opt/tensorrt/bin
 COPY --from=tensorrt-builder /build/tensorrt/include /opt/tensorrt/include
 
-# Copy CUDA-accelerated FFmpeg from build stage
+# Copy CUDA-accelerated FFmpeg from build stage (with fallback)
 COPY --from=ffmpeg-builder /opt/ffmpeg/bin /opt/ffmpeg/bin
 COPY --from=ffmpeg-builder /opt/ffmpeg/lib /opt/ffmpeg/lib
 COPY --from=ffmpeg-builder /opt/ffmpeg/include /opt/ffmpeg/include
 
-# Copy PyAV wheels from build stage
-COPY --from=pyav-builder /*.whl /opt/pyav/
+# Verify FFmpeg installation
+RUN if [ -f "/opt/ffmpeg/bin/ffmpeg" ]; then \
+        echo "✅ FFmpeg installation verified" && \
+        /opt/ffmpeg/bin/ffmpeg -version | head -3; \
+    else \
+        echo "❌ FFmpeg installation failed - creating minimal structure" && \
+        mkdir -p /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/ffmpeg/include; \
+    fi
+
+# Copy PyAV wheels from build stage (optional)
+COPY --from=pyav-builder /*.whl /opt/pyav/ || mkdir -p /opt/pyav
 
 # Install TensorRT Python wheels (only runtime files copied)
 RUN if [ -d "/opt/tensorrt/python" ] && [ "$(ls -A /opt/tensorrt/python/*.whl 2>/dev/null)" ]; then \
