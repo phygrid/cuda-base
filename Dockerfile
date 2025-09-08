@@ -85,17 +85,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     pkg-config \
     yasm \
     nasm \
-    # Codec development libraries
+    # Essential codec development libraries for WebRTC
     libx264-dev \
-    libx265-dev \
     libvpx-dev \
-    libfdk-aac-dev \
-    libmp3lame-dev \
     libopus-dev \
     libvorbis-dev \
-    libtheora-dev \
-    libass-dev \
-    libfreetype6-dev \
     libssl-dev \
     libsrtp2-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -125,16 +119,9 @@ RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git \
         --enable-nvenc \
         --enable-libnpp \
         --enable-libx264 \
-        --enable-libx265 \
         --enable-libvpx \
-        --enable-libfdk-aac \
-        --enable-libmp3lame \
         --enable-libopus \
         --enable-libvorbis \
-        --enable-libtheora \
-        --enable-libass \
-        --enable-libfreetype \
-        --enable-openssl \
         --disable-debug \
         --disable-doc \
         --disable-static \
@@ -183,17 +170,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-
     libglx-mesa0 \
     libglib2.0-0 \
     libgomp1 \
-    # FFmpeg runtime dependencies
+    # Essential FFmpeg runtime dependencies for WebRTC
     libx264-164 \
-    libx265-199 \
     libvpx9 \
-    libfdk-aac2 \
-    libmp3lame0 \
     libopus0 \
     libvorbis0a \
-    libtheora0 \
-    libass9 \
-    libfreetype6 \
     libssl3t64 \
     libsrtp2-1 \
     # TensorRT runtime dependencies
