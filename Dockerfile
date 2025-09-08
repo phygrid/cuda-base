@@ -99,11 +99,12 @@ RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git \
     && make install \
     && cd .. && rm -rf nv-codec-headers
 
-# Download and compile FFmpeg with mandatory success verification
-RUN set -ex && \
-    echo "=== Downloading FFmpeg source ===" && \
-    git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git && \
-    cd ffmpeg && \
+# Download FFmpeg source
+RUN echo "=== Downloading FFmpeg source ===" && \
+    git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git
+
+# Configure FFmpeg (separate step to isolate configure issues)
+RUN cd ffmpeg && \
     echo "=== FFmpeg Configure Phase ===" && \
     ./configure \
         --prefix=/opt/ffmpeg \
@@ -120,16 +121,27 @@ RUN set -ex && \
         --enable-libvpx \
         --enable-libopus \
         --enable-libvorbis \
-        --enable-openssl && \
-    echo "=== Configure SUCCESS - starting compilation ===" && \
-    make -j2 && \
-    echo "=== Compilation SUCCESS - installing ===" && \
+        --enable-openssl || \
+    (echo "=== CONFIGURE FAILED - showing config.log ==="; tail -20 ffbuild/config.log; exit 1) && \
+    echo "=== Configure completed successfully ==="
+
+# Compile FFmpeg (separate step to isolate compile issues) 
+RUN cd ffmpeg && \
+    echo "=== FFmpeg Compilation Phase ===" && \
+    make -j2 || \
+    (echo "=== COMPILATION FAILED ===" && exit 1) && \
+    echo "=== Compilation completed successfully ==="
+
+# Install and verify FFmpeg (separate step to isolate install issues)
+RUN cd ffmpeg && \
+    echo "=== FFmpeg Installation Phase ===" && \
     make install && \
-    echo "=== Verifying installation ===" && \
-    test -f /opt/ffmpeg/bin/ffmpeg || (echo "ERROR: ffmpeg binary not found" && exit 1) && \
-    test -d /opt/ffmpeg/lib || (echo "ERROR: ffmpeg lib dir not found" && exit 1) && \
-    /opt/ffmpeg/bin/ffmpeg -version | head -3 && \
-    echo "=== FFmpeg BUILD SUCCESSFUL ===" && \
+    echo "=== Verifying FFmpeg installation ===" && \
+    test -f /opt/ffmpeg/bin/ffmpeg || (echo "ERROR: ffmpeg binary missing after install" && exit 1) && \
+    test -d /opt/ffmpeg/lib || (echo "ERROR: ffmpeg lib directory missing" && exit 1) && \
+    ls -la /opt/ffmpeg/bin/ffmpeg && \
+    /opt/ffmpeg/bin/ffmpeg -version 2>&1 | head -3 && \
+    echo "=== FFmpeg build SUCCESSFUL ===" && \
     cd .. && rm -rf ffmpeg
 
 # ====== STAGE: PyAV Builder ======
