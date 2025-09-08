@@ -188,9 +188,9 @@ ENV PKG_CONFIG_PATH="/opt/ffmpeg/lib/pkgconfig" \
 # Build PyAV with custom CUDA FFmpeg (step by step with error checking)
 RUN set -ex && \
     echo "=== Installing PyAV build dependencies ===" && \
-    pip3 install --no-cache-dir cython numpy setuptools wheel && \
+    pip3 install --no-cache-dir --break-system-packages cython numpy setuptools wheel && \
     echo "=== Building PyAV wheel with CUDA FFmpeg ===" && \
-    pip3 wheel --wheel-dir=/wheels --no-cache-dir --no-binary av av==12.3.0 && \
+    pip3 wheel --wheel-dir=/wheels --no-cache-dir --no-binary av --break-system-packages av==12.3.0 && \
     echo "=== PyAV wheel build complete ===" && \
     ls -la /wheels/
 
