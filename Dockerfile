@@ -247,9 +247,6 @@ RUN if [ -d "/opt/pyav" ] && [ "$(ls -A /opt/pyav/*.whl 2>/dev/null)" ]; then \
 ENV PATH="/opt/ffmpeg/bin:$PATH" \
     PKG_CONFIG_PATH="/opt/ffmpeg/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig" \
     LD_LIBRARY_PATH="/opt/ffmpeg/lib:$LD_LIBRARY_PATH"
-    else \
-        echo "⚠️  No TensorRT Python wheels found"; \
-    fi
 
 # Install minimal common Python packages (no caching for smaller image)
 RUN python -m pip install --no-cache-dir --break-system-packages \
