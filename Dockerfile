@@ -203,22 +203,33 @@ COPY --from=tensorrt-builder /build/tensorrt/python /opt/tensorrt/python
 COPY --from=tensorrt-builder /build/tensorrt/bin /opt/tensorrt/bin
 COPY --from=tensorrt-builder /build/tensorrt/include /opt/tensorrt/include
 
-# Copy CUDA-accelerated FFmpeg from build stage (with fallback)
-COPY --from=ffmpeg-builder /opt/ffmpeg/bin /opt/ffmpeg/bin
-COPY --from=ffmpeg-builder /opt/ffmpeg/lib /opt/ffmpeg/lib
-COPY --from=ffmpeg-builder /opt/ffmpeg/include /opt/ffmpeg/include
+# Create FFmpeg directories first
+RUN mkdir -p /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/ffmpeg/include
 
-# Verify FFmpeg installation
-RUN if [ -f "/opt/ffmpeg/bin/ffmpeg" ]; then \
-        echo "✅ FFmpeg installation verified" && \
+# Try to copy CUDA-accelerated FFmpeg from build stage (conditional)
+RUN --mount=from=ffmpeg-builder,source=/opt/ffmpeg,target=/tmp/ffmpeg,rw \
+    if [ -d "/tmp/ffmpeg/bin" ] && [ -f "/tmp/ffmpeg/bin/ffmpeg" ]; then \
+        echo "✅ FFmpeg build successful, copying files..." && \
+        cp -r /tmp/ffmpeg/bin/* /opt/ffmpeg/bin/ && \
+        cp -r /tmp/ffmpeg/lib/* /opt/ffmpeg/lib/ && \
+        cp -r /tmp/ffmpeg/include/* /opt/ffmpeg/include/ && \
         /opt/ffmpeg/bin/ffmpeg -version | head -3; \
     else \
-        echo "❌ FFmpeg installation failed - creating minimal structure" && \
-        mkdir -p /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/ffmpeg/include; \
+        echo "❌ FFmpeg build failed, using system FFmpeg" && \
+        ln -sf /usr/bin/ffmpeg /opt/ffmpeg/bin/ffmpeg 2>/dev/null || echo "No system FFmpeg available"; \
     fi
 
-# Copy PyAV wheels from build stage (optional)
-COPY --from=pyav-builder /*.whl /opt/pyav/ || mkdir -p /opt/pyav
+# Create PyAV directory
+RUN mkdir -p /opt/pyav
+
+# Try to copy PyAV wheels (conditional)
+RUN --mount=from=pyav-builder,source=/,target=/tmp/pyav,rw \
+    if [ -f "/tmp/pyav/*.whl" ]; then \
+        echo "✅ PyAV build successful, copying wheels..." && \
+        cp /tmp/pyav/*.whl /opt/pyav/; \
+    else \
+        echo "❌ PyAV build failed, will install from PyPI"; \
+    fi
 
 # Install TensorRT Python wheels (only runtime files copied)
 RUN if [ -d "/opt/tensorrt/python" ] && [ "$(ls -A /opt/tensorrt/python/*.whl 2>/dev/null)" ]; then \
@@ -229,11 +240,15 @@ RUN if [ -d "/opt/tensorrt/python" ] && [ "$(ls -A /opt/tensorrt/python/*.whl 2>
         echo "⚠️  No TensorRT Python wheels found"; \
     fi
 
-# Install PyAV with CUDA FFmpeg support
+# Install PyAV (custom build or fallback to PyPI)
 RUN if [ -d "/opt/pyav" ] && [ "$(ls -A /opt/pyav/*.whl 2>/dev/null)" ]; then \
         echo "Installing PyAV with CUDA FFmpeg support..." && \
         python -m pip install --no-cache-dir --break-system-packages /opt/pyav/*.whl || \
-        echo "⚠️  PyAV wheel installation failed"; \
+        echo "⚠️  PyAV wheel installation failed, falling back to PyPI" && \
+        python -m pip install --no-cache-dir --break-system-packages 'av>=11.0.0,<13.0.0'; \
+    else \
+        echo "Installing PyAV from PyPI (compatible version)..." && \
+        python -m pip install --no-cache-dir --break-system-packages 'av>=11.0.0,<13.0.0'; \
     fi
 
 # Add FFmpeg to PATH and library paths
