@@ -72,101 +72,6 @@ RUN set -ex && \
         mkdir -p /build/tensorrt/lib /build/tensorrt/python /build/tensorrt/bin /build/tensorrt/include; \
     fi
 
-# ====== STAGE: FFmpeg Builder with CUDA Support ======
-FROM nvidia/cuda:12.9.0-devel-ubuntu24.04 AS ffmpeg-builder
-
-WORKDIR /opt
-
-# Install build dependencies for FFmpeg
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    git \
-    pkg-config \
-    yasm \
-    nasm \
-    # Essential codec development libraries for WebRTC
-    libx264-dev \
-    libvpx-dev \
-    libopus-dev \
-    libvorbis-dev \
-    libssl-dev \
-    libsrtp2-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Download and install NVIDIA codec headers (required for NVENC/NVDEC)
-RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git \
-    && cd nv-codec-headers \
-    && make install \
-    && cd .. && rm -rf nv-codec-headers
-
-# Download and compile FFmpeg with CUDA acceleration (with retry logic)
-RUN set -e && \
-    # Try git clone with retries, fall back to wget if needed
-    for i in 1 2 3; do \
-        if git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git; then \
-            echo "Git clone successful on attempt $i"; \
-            break; \
-        else \
-            echo "Git clone failed on attempt $i, retrying..."; \
-            rm -rf ffmpeg; \
-            sleep 5; \
-        fi; \
-        if [ $i -eq 3 ]; then \
-            echo "Git clone failed after 3 attempts, trying wget..."; \
-            wget -O ffmpeg.tar.gz https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz && \
-            tar -xzf ffmpeg.tar.gz && \
-            mv FFmpeg-master ffmpeg && \
-            rm ffmpeg.tar.gz; \
-        fi; \
-    done && \
-    cd ffmpeg \
-    && ./configure \
-        --prefix=/opt/ffmpeg \
-        --pkg-config-flags="--static" \
-        --extra-cflags="-I/usr/local/cuda/include" \
-        --extra-ldflags="-L/usr/local/cuda/lib64" \
-        --extra-libs="-lpthread -lm -lz" \
-        --bindir=/opt/ffmpeg/bin \
-        --libdir=/opt/ffmpeg/lib \
-        --incdir=/opt/ffmpeg/include \
-        --enable-gpl \
-        --enable-nonfree \
-        --enable-cuda-nvcc \
-        --enable-cuvid \
-        --enable-nvenc \
-        --enable-libnpp \
-        --enable-libx264 \
-        --enable-libvpx \
-        --enable-libopus \
-        --enable-libvorbis \
-        --disable-debug \
-        --disable-doc \
-        --disable-static \
-        --enable-shared \
-    && make -j$(nproc) \
-    && make install \
-    && cd .. && rm -rf ffmpeg
-
-# ====== STAGE: PyAV Builder ======
-FROM ffmpeg-builder AS pyav-builder
-
-# Install Python build dependencies
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    python3-dev \
-    python3-pip \
-    python3-setuptools \
-    python3-wheel \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set environment for PyAV to find our custom FFmpeg
-ENV PKG_CONFIG_PATH="/opt/ffmpeg/lib/pkgconfig" \
-    LD_LIBRARY_PATH="/opt/ffmpeg/lib:$LD_LIBRARY_PATH"
-
-# Build PyAV with custom FFmpeg (creates wheels for later installation)
-RUN pip3 install --no-cache-dir cython numpy setuptools wheel \
-    && pip3 wheel --no-cache-dir --no-binary av av>=12.0.0
-
 # ====== FINAL STAGE: Runtime Image ======  
 FROM nvidia/cuda:12.9.0-runtime-ubuntu24.04
 
@@ -188,13 +93,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-
     libglx-mesa0 \
     libglib2.0-0 \
     libgomp1 \
-    # Essential FFmpeg runtime dependencies for WebRTC
-    libx264-164 \
-    libvpx9 \
-    libopus0 \
-    libvorbis0a \
-    libssl3t64 \
-    libsrtp2-1 \
     # TensorRT runtime dependencies
     libprotobuf32t64 \
     # CUDA math libraries required for TensorRT (CUDA 12.9)
@@ -217,32 +115,14 @@ COPY --from=tensorrt-builder /build/tensorrt/python /opt/tensorrt/python
 COPY --from=tensorrt-builder /build/tensorrt/bin /opt/tensorrt/bin
 COPY --from=tensorrt-builder /build/tensorrt/include /opt/tensorrt/include
 
-# Copy CUDA-accelerated FFmpeg from build stage
-COPY --from=ffmpeg-builder /opt/ffmpeg/bin /opt/ffmpeg/bin
-COPY --from=ffmpeg-builder /opt/ffmpeg/lib /opt/ffmpeg/lib
-COPY --from=ffmpeg-builder /opt/ffmpeg/include /opt/ffmpeg/include
-
-# Copy PyAV wheels from build stage
-COPY --from=pyav-builder /*.whl /opt/pyav/
-
 # Install TensorRT Python wheels (only runtime files copied)
 RUN if [ -d "/opt/tensorrt/python" ] && [ "$(ls -A /opt/tensorrt/python/*.whl 2>/dev/null)" ]; then \
         echo "Installing TensorRT Python wheels..." && \
         python -m pip install --no-cache-dir --break-system-packages /opt/tensorrt/python/*.whl || \
         echo "⚠️  TensorRT Python wheel installation failed"; \
+    else \
+        echo "⚠️  No TensorRT Python wheels found"; \
     fi
-
-# Install PyAV with CUDA-accelerated FFmpeg
-RUN if [ -d "/opt/pyav" ] && [ "$(ls -A /opt/pyav/*.whl 2>/dev/null)" ]; then \
-        echo "Installing PyAV with CUDA FFmpeg support..." && \
-        python -m pip install --no-cache-dir --break-system-packages /opt/pyav/*.whl || \
-        echo "⚠️  PyAV wheel installation failed"; \
-    fi
-
-# Add FFmpeg to PATH and library paths
-ENV PATH="/opt/ffmpeg/bin:$PATH" \
-    PKG_CONFIG_PATH="/opt/ffmpeg/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig" \
-    LD_LIBRARY_PATH="/opt/ffmpeg/lib:$LD_LIBRARY_PATH"
 
 # Install minimal common Python packages (no caching for smaller image)
 RUN python -m pip install --no-cache-dir --break-system-packages \
