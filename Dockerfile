@@ -99,60 +99,69 @@ RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git \
     && make install \
     && cd .. && rm -rf nv-codec-headers
 
-# Download and compile FFmpeg with CUDA support (with error checking)
-RUN set -e && \
-    git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git && \
-    cd ffmpeg && \
-    echo "Starting FFmpeg configure..." && \
+# Download and compile FFmpeg step by step with error checking
+RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git
+
+# Configure FFmpeg with verbose output to debug failures
+RUN cd ffmpeg && \
+    echo "=== FFmpeg Configure Phase ===" && \
     ./configure \
         --prefix=/opt/ffmpeg \
-        --bindir=/opt/ffmpeg/bin \
-        --libdir=/opt/ffmpeg/lib \
-        --incdir=/opt/ffmpeg/include \
-        --extra-cflags="-I/usr/local/cuda/include" \
-        --extra-ldflags="-L/usr/local/cuda/lib64" \
         --enable-gpl \
         --enable-nonfree \
         --enable-shared \
         --disable-static \
-        --disable-debug \
-        --disable-doc \
+        --extra-cflags="-I/usr/local/cuda/include" \
+        --extra-ldflags="-L/usr/local/cuda/lib64" \
         --enable-cuda-nvcc \
         --enable-cuvid \
         --enable-nvenc \
-        --enable-libnpp \
         --enable-libx264 \
-        --enable-libvpx \
-        --enable-libopus \
-        --enable-libvorbis \
-        --enable-openssl && \
-    echo "FFmpeg configure successful, starting compilation..." && \
-    make -j$(nproc) && \
-    echo "FFmpeg compilation successful, installing..." && \
+        --enable-libvpx && \
+    echo "=== Configure completed successfully ==="
+
+# Compile FFmpeg with limited parallelism to avoid resource issues
+RUN cd ffmpeg && \
+    echo "=== FFmpeg Compilation Phase ===" && \
+    make -j4 && \
+    echo "=== Compilation completed successfully ==="
+
+# Install FFmpeg and verify
+RUN cd ffmpeg && \
+    echo "=== FFmpeg Installation Phase ===" && \
     make install && \
-    echo "FFmpeg installation complete" && \
+    echo "=== Verifying FFmpeg installation ===" && \
     ls -la /opt/ffmpeg/bin/ && \
     ls -la /opt/ffmpeg/lib/ && \
+    /opt/ffmpeg/bin/ffmpeg -version | head -5 && \
+    echo "=== FFmpeg build complete ===" && \
     cd .. && rm -rf ffmpeg
 
 # ====== STAGE: PyAV Builder ======
 FROM ffmpeg-builder AS pyav-builder
 
-# Install Python build dependencies  
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+# Install Python build dependencies
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     python3-dev \
     python3-pip \
     python3-setuptools \
     python3-wheel \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Set environment for PyAV to find our custom FFmpeg
+# Set environment for PyAV to use our custom FFmpeg
 ENV PKG_CONFIG_PATH="/opt/ffmpeg/lib/pkgconfig" \
-    LD_LIBRARY_PATH="/opt/ffmpeg/lib:$LD_LIBRARY_PATH"
+    LD_LIBRARY_PATH="/opt/ffmpeg/lib:$LD_LIBRARY_PATH" \
+    PYTHONPATH="/usr/local/lib/python3.12/site-packages"
 
-# Build PyAV with custom CUDA FFmpeg
-RUN pip3 install --no-cache-dir cython numpy setuptools wheel \
-    && pip3 wheel --no-cache-dir --no-binary av av>=12.0.0
+# Build PyAV with custom CUDA FFmpeg (step by step with error checking)
+RUN set -ex && \
+    echo "=== Installing PyAV build dependencies ===" && \
+    pip3 install --no-cache-dir cython numpy setuptools wheel && \
+    echo "=== Building PyAV wheel with CUDA FFmpeg ===" && \
+    pip3 wheel --wheel-dir=/wheels --no-cache-dir --no-binary av av==12.3.0 && \
+    echo "=== PyAV wheel build complete ===" && \
+    ls -la /wheels/
 
 # ====== FINAL STAGE: Runtime Image ======  
 FROM nvidia/cuda:12.9.0-runtime-ubuntu24.04
@@ -203,33 +212,11 @@ COPY --from=tensorrt-builder /build/tensorrt/python /opt/tensorrt/python
 COPY --from=tensorrt-builder /build/tensorrt/bin /opt/tensorrt/bin
 COPY --from=tensorrt-builder /build/tensorrt/include /opt/tensorrt/include
 
-# Create FFmpeg directories first
-RUN mkdir -p /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/ffmpeg/include
+# Copy CUDA FFmpeg from build stage (must exist)
+COPY --from=ffmpeg-builder /opt/ffmpeg /opt/ffmpeg
 
-# Try to copy CUDA-accelerated FFmpeg from build stage (conditional)
-RUN --mount=from=ffmpeg-builder,source=/opt/ffmpeg,target=/tmp/ffmpeg,rw \
-    if [ -d "/tmp/ffmpeg/bin" ] && [ -f "/tmp/ffmpeg/bin/ffmpeg" ]; then \
-        echo "✅ FFmpeg build successful, copying files..." && \
-        cp -r /tmp/ffmpeg/bin/* /opt/ffmpeg/bin/ && \
-        cp -r /tmp/ffmpeg/lib/* /opt/ffmpeg/lib/ && \
-        cp -r /tmp/ffmpeg/include/* /opt/ffmpeg/include/ && \
-        /opt/ffmpeg/bin/ffmpeg -version | head -3; \
-    else \
-        echo "❌ FFmpeg build failed, using system FFmpeg" && \
-        ln -sf /usr/bin/ffmpeg /opt/ffmpeg/bin/ffmpeg 2>/dev/null || echo "No system FFmpeg available"; \
-    fi
-
-# Create PyAV directory
-RUN mkdir -p /opt/pyav
-
-# Try to copy PyAV wheels (conditional)
-RUN --mount=from=pyav-builder,source=/,target=/tmp/pyav,rw \
-    if [ -f "/tmp/pyav/*.whl" ]; then \
-        echo "✅ PyAV build successful, copying wheels..." && \
-        cp /tmp/pyav/*.whl /opt/pyav/; \
-    else \
-        echo "❌ PyAV build failed, will install from PyPI"; \
-    fi
+# Copy PyAV wheels from build stage (must exist)
+COPY --from=pyav-builder /wheels/*.whl /opt/pyav/
 
 # Install TensorRT Python wheels (only runtime files copied)
 RUN if [ -d "/opt/tensorrt/python" ] && [ "$(ls -A /opt/tensorrt/python/*.whl 2>/dev/null)" ]; then \
@@ -240,16 +227,10 @@ RUN if [ -d "/opt/tensorrt/python" ] && [ "$(ls -A /opt/tensorrt/python/*.whl 2>
         echo "⚠️  No TensorRT Python wheels found"; \
     fi
 
-# Install PyAV (custom build or fallback to PyPI)
-RUN if [ -d "/opt/pyav" ] && [ "$(ls -A /opt/pyav/*.whl 2>/dev/null)" ]; then \
-        echo "Installing PyAV with CUDA FFmpeg support..." && \
-        python -m pip install --no-cache-dir --break-system-packages /opt/pyav/*.whl || \
-        echo "⚠️  PyAV wheel installation failed, falling back to PyPI" && \
-        python -m pip install --no-cache-dir --break-system-packages 'av>=11.0.0,<13.0.0'; \
-    else \
-        echo "Installing PyAV from PyPI (compatible version)..." && \
-        python -m pip install --no-cache-dir --break-system-packages 'av>=11.0.0,<13.0.0'; \
-    fi
+# Install custom PyAV with CUDA FFmpeg support (must succeed)
+RUN echo "Installing custom PyAV with CUDA FFmpeg support..." && \
+    python -m pip install --no-cache-dir --break-system-packages /opt/pyav/*.whl && \
+    echo "✅ PyAV installation successful"
 
 # Add FFmpeg to PATH and library paths
 ENV PATH="/opt/ffmpeg/bin:$PATH" \
