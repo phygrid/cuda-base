@@ -113,7 +113,7 @@ RUN echo "=== Downloading FFmpeg source ===" && \
         fi; \
         if [ $i -eq 3 ]; then \
             echo "All git clone attempts failed, trying wget fallback..." && \
-            wget -O ffmpeg.tar.gz https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz && \
+            wget --timeout=60 --tries=3 -O ffmpeg.tar.gz https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz && \
             tar -xzf ffmpeg.tar.gz && \
             mv FFmpeg-master ffmpeg && \
             rm ffmpeg.tar.gz && \
@@ -121,11 +121,14 @@ RUN echo "=== Downloading FFmpeg source ===" && \
         fi; \
     done
 
-# Configure FFmpeg (separate step to isolate configure issues)
+# Configure FFmpeg (separate step to isolate configure issues) - use /usr/local prefix
 RUN cd ffmpeg && \
     echo "=== FFmpeg Configure Phase ===" && \
     ./configure \
-        --prefix=/opt/ffmpeg \
+        --prefix=/usr/local/ffmpeg \
+        --bindir=/usr/local/ffmpeg/bin \
+        --libdir=/usr/local/ffmpeg/lib \
+        --incdir=/usr/local/ffmpeg/include \
         --enable-gpl \
         --enable-nonfree \
         --enable-shared \
@@ -155,14 +158,13 @@ RUN cd ffmpeg && \
     echo "=== FFmpeg Installation Phase ===" && \
     make install && \
     echo "=== Debugging FFmpeg installation location ===" && \
-    find /opt -name "ffmpeg" -type f 2>/dev/null | head -10 && \
     find /usr/local -name "ffmpeg" -type f 2>/dev/null | head -10 && \
-    ls -la /opt/ && \
-    echo "=== Verifying expected FFmpeg installation ===" && \
-    test -f /opt/ffmpeg/bin/ffmpeg || (echo "ERROR: ffmpeg binary missing at /opt/ffmpeg/bin/ffmpeg" && exit 1) && \
-    test -d /opt/ffmpeg/lib || (echo "ERROR: ffmpeg lib directory missing at /opt/ffmpeg/lib" && exit 1) && \
-    ls -la /opt/ffmpeg/ && \
-    /opt/ffmpeg/bin/ffmpeg -version 2>&1 | head -3 && \
+    ls -la /usr/local/ffmpeg/ && \
+    echo "=== Verifying FFmpeg installation ===" && \
+    test -f /usr/local/ffmpeg/bin/ffmpeg || (echo "ERROR: ffmpeg binary missing at /usr/local/ffmpeg/bin/ffmpeg" && exit 1) && \
+    test -d /usr/local/ffmpeg/lib || (echo "ERROR: ffmpeg lib directory missing at /usr/local/ffmpeg/lib" && exit 1) && \
+    ls -la /usr/local/ffmpeg/bin/ && \
+    /usr/local/ffmpeg/bin/ffmpeg -version 2>&1 | head -3 && \
     echo "=== FFmpeg build SUCCESSFUL ===" && \
     cd .. && rm -rf ffmpeg
 
@@ -241,8 +243,8 @@ COPY --from=tensorrt-builder /build/tensorrt/python /opt/tensorrt/python
 COPY --from=tensorrt-builder /build/tensorrt/bin /opt/tensorrt/bin
 COPY --from=tensorrt-builder /build/tensorrt/include /opt/tensorrt/include
 
-# Copy CUDA FFmpeg from build stage (must exist)
-COPY --from=ffmpeg-builder /opt/ffmpeg /opt/ffmpeg
+# Copy CUDA FFmpeg from build stage (from /usr/local/ffmpeg)
+COPY --from=ffmpeg-builder /usr/local/ffmpeg /opt/ffmpeg
 
 # Copy PyAV wheels from build stage (must exist)
 COPY --from=pyav-builder /wheels/*.whl /opt/pyav/
