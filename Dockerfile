@@ -415,7 +415,7 @@ CMD ["python", "/app/health_check.py"]
 
 # Optimized labels
 LABEL maintainer="Phygrid"
-LABEL base="nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04"
+LABEL base="nvidia/cuda:12.9.0-runtime-ubuntu24.04"
 LABEL tensorrt.version="${TENSORRT_VERSION}"
 LABEL description="Minimal CUDA base with TensorRT runtime for AI inference (multi-stage optimized)"
 LABEL architecture="multi-arch"
