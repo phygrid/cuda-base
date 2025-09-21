@@ -168,39 +168,6 @@ jobs:
             org.opencontainers.image.vendor=Phygrid
             org.opencontainers.image.version=${{ needs.version-management.outputs.version }}
 
-      - name: Free up disk space before build
-        run: |
-          echo "=== Disk space before cleanup ==="
-          df -h
-          echo "=== Aggressive system cleanup ==="
-          
-          # Remove unnecessary packages and clean APT
-          sudo apt-get autoremove -y || true
-          sudo apt-get autoclean || true
-          sudo apt-get clean || true
-          
-          # Remove large directories commonly found on GitHub runners
-          sudo rm -rf /usr/share/dotnet || true
-          sudo rm -rf /opt/ghc || true
-          sudo rm -rf /usr/local/share/boost || true
-          sudo rm -rf /usr/local/graalvm || true
-          sudo rm -rf /usr/local/share/powershell || true
-          sudo rm -rf /usr/local/share/chromium || true
-          sudo rm -rf /usr/local/lib/android || true
-          sudo rm -rf /usr/local/lib/node_modules || true
-          
-          # Docker cleanup
-          docker system prune -af --volumes || true
-          docker builder prune -af || true
-          docker image prune -af || true
-          
-          # Remove build caches
-          sudo rm -rf ~/.cache || true
-          sudo rm -rf /tmp/* || true
-          
-          echo "=== Disk space after cleanup ==="
-          df -h
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -215,17 +182,6 @@ jobs:
           sbom: true
           build-args: |
             VERSION=${{ needs.version-management.outputs.version }}
-
-      - name: Clean up build artifacts and free disk space
-        if: always()
-        run: |
-          echo "=== Final cleanup ==="
-          docker system prune -af --volumes || true
-          docker builder prune -af || true
-          # Remove any dangling images
-          docker image prune -af || true
-          echo "=== Final disk space ==="
-          df -h
 
       - name: Update image labels in Dockerfile
         run: |
