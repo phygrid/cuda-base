@@ -168,6 +168,16 @@ jobs:
             org.opencontainers.image.vendor=Phygrid
             org.opencontainers.image.version=${{ needs.version-management.outputs.version }}
 
+      - name: Free up disk space before build
+        run: |
+          echo "=== Disk space before cleanup ==="
+          df -h
+          echo "=== Docker system cleanup ==="
+          docker system prune -af --volumes || true
+          docker builder prune -af || true
+          echo "=== Disk space after cleanup ==="
+          df -h
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -176,12 +186,28 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache,mode=max
           provenance: true
           sbom: true
           build-args: |
             VERSION=${{ needs.version-management.outputs.version }}
+
+      - name: Clean up build artifacts and free disk space
+        if: always()
+        run: |
+          echo "=== Final cleanup ==="
+          docker system prune -af --volumes || true
+          docker builder prune -af || true
+          # Remove any dangling images
+          docker image prune -af || true
+          echo "=== Final disk space ==="
+          df -h
 
       - name: Update image labels in Dockerfile
         run: |
