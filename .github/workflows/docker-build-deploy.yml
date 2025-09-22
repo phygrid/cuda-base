@@ -143,6 +143,90 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Restore download cache
+        uses: actions/cache@v3
+        id: downloads-cache
+        with:
+          path: ./downloads-cache
+          key: cuda-base-downloads-${{ runner.os }}-${{ hashFiles('VERSION') }}
+          restore-keys: |
+            cuda-base-downloads-${{ runner.os }}-
+
+      - name: Create download cache directory
+        run: |
+          mkdir -p ./downloads-cache
+          echo "Download cache directory created"
+          ls -la ./downloads-cache || true
+
+      - name: Download TensorRT for AMD64
+        run: |
+          TRT_AMD64_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-10.9.0.34.Linux.x86_64.cuda-12.8.tar.gz"
+          cd ./downloads-cache
+
+          # Skip if already downloaded
+          if [ -f "tensorrt-amd64.tar.gz" ]; then
+            echo "TensorRT AMD64 already downloaded, skipping..."
+          elif [ -f "tensorrt-amd64.tar.gz.partial" ]; then
+            echo "Resuming previous partial download..."
+            wget -c -nv --timeout=120 --tries=5 -O tensorrt-amd64.tar.gz.partial "$TRT_AMD64_URL" && \
+              mv tensorrt-amd64.tar.gz.partial tensorrt-amd64.tar.gz
+          else
+            echo "Downloading TensorRT for AMD64..."
+            wget -c -nv --timeout=120 --tries=5 -O tensorrt-amd64.tar.gz "$TRT_AMD64_URL" || \
+              (mv tensorrt-amd64.tar.gz tensorrt-amd64.tar.gz.partial 2>/dev/null; exit 1)
+          fi
+
+          echo "TensorRT AMD64: $(ls -lh tensorrt-amd64.tar.gz* 2>/dev/null || echo 'Not found')"
+          cd ..
+
+      - name: Download TensorRT for ARM64
+        run: |
+          TRT_ARM64_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-10.9.0.34.Linux.aarch64-gnu.cuda-12.8.tar.gz"
+          cd ./downloads-cache
+
+          # Skip if already downloaded
+          if [ -f "tensorrt-arm64.tar.gz" ]; then
+            echo "TensorRT ARM64 already downloaded, skipping..."
+          elif [ -f "tensorrt-arm64.tar.gz.partial" ]; then
+            echo "Resuming previous partial download..."
+            wget -c -nv --timeout=120 --tries=5 -O tensorrt-arm64.tar.gz.partial "$TRT_ARM64_URL" && \
+              mv tensorrt-arm64.tar.gz.partial tensorrt-arm64.tar.gz
+          else
+            echo "Downloading TensorRT for ARM64..."
+            wget -c -nv --timeout=120 --tries=5 -O tensorrt-arm64.tar.gz "$TRT_ARM64_URL" || \
+              (mv tensorrt-arm64.tar.gz tensorrt-arm64.tar.gz.partial 2>/dev/null; exit 1)
+          fi
+
+          echo "TensorRT ARM64: $(ls -lh tensorrt-arm64.tar.gz* 2>/dev/null || echo 'Not found')"
+          cd ..
+
+      - name: Download FFmpeg source
+        run: |
+          FFMPEG_URL="https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz"
+          cd ./downloads-cache
+
+          # Skip if already downloaded
+          if [ -f "ffmpeg.tar.gz" ]; then
+            echo "FFmpeg source already downloaded, skipping..."
+          elif [ -f "ffmpeg.tar.gz.partial" ]; then
+            echo "Resuming previous partial download..."
+            wget -c -nv --timeout=120 --tries=5 -O ffmpeg.tar.gz.partial "$FFMPEG_URL" && \
+              mv ffmpeg.tar.gz.partial ffmpeg.tar.gz
+          else
+            echo "Downloading FFmpeg source..."
+            wget -c -nv --timeout=120 --tries=5 -O ffmpeg.tar.gz "$FFMPEG_URL" || \
+              (mv ffmpeg.tar.gz ffmpeg.tar.gz.partial 2>/dev/null; exit 1)
+          fi
+
+          echo "FFmpeg: $(ls -lh ffmpeg.tar.gz* 2>/dev/null || echo 'Not found')"
+          cd ..
+
+      - name: Verify downloads
+        run: |
+          echo "Verifying downloaded files..."
+          ls -la ./downloads-cache/
+          echo "Total size: $(du -sh ./downloads-cache/ | cut -f1)"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -182,6 +266,7 @@ jobs:
           sbom: true
           build-args: |
             VERSION=${{ needs.version-management.outputs.version }}
+            DOWNLOADS_DIR=./downloads-cache
 
       - name: Update image labels in Dockerfile
         run: |

@@ -15,17 +15,14 @@ FROM nvidia/cuda:12.9.0-runtime-ubuntu24.04 AS tensorrt-builder
 # Re-declare args for this stage
 ARG TARGETARCH
 ARG TENSORRT_VERSION=10.9.0.34
+ARG DOWNLOADS_DIR=./downloads-cache
 
 WORKDIR /build
 
-# Install minimal tools needed for download and extraction only
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    wget \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Copy pre-downloaded TensorRT files
+COPY ${DOWNLOADS_DIR}/tensorrt-*.tar.gz /tmp/
 
-# Download and extract TensorRT (architecture-aware)
+# Extract TensorRT (architecture-aware)
 RUN set -ex && \
     # Detect architecture if TARGETARCH is not set
     if [ -z "${TARGETARCH}" ]; then \
@@ -39,41 +36,39 @@ RUN set -ex && \
     \
     echo "Building TensorRT for ${TARGETARCH} architecture..." && \
     \
-    # Set architecture-specific package name
+    # Set architecture-specific file
     case "${TARGETARCH}" in \
         "amd64") \
-            TRT_ARCH="Linux.x86_64-gnu" \
+            TRT_FILE="/tmp/tensorrt-amd64.tar.gz" \
             ;; \
         "arm64") \
-            TRT_ARCH="Linux.aarch64-gnu" \
+            TRT_FILE="/tmp/tensorrt-arm64.tar.gz" \
             ;; \
         *) \
             echo "Unsupported architecture: ${TARGETARCH}" && exit 1 \
             ;; \
     esac && \
     \
-    # TensorRT 10.9.0 download URL for CUDA 12.9 support
-    TRT_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-10.9.0.34.${TRT_ARCH}.cuda-12.8.tar.gz" && \
-    \
-    echo "Attempting TensorRT download from: ${TRT_URL}" && \
+    echo "Extracting TensorRT from: ${TRT_FILE}" && \
     mkdir -p /build/tensorrt && \
     \
-    # Download with timeout and retry
-    if wget --timeout=60 --tries=3 --no-check-certificate -O /tmp/tensorrt.tar.gz "${TRT_URL}"; then \
-        echo "✓ TensorRT download successful" && \
-        tar -xzf /tmp/tensorrt.tar.gz -C /build/tensorrt --strip-components=1 && \
-        rm /tmp/tensorrt.tar.gz && \
+    # Extract pre-downloaded file
+    if [ -f "${TRT_FILE}" ]; then \
+        tar -xzf "${TRT_FILE}" -C /build/tensorrt --strip-components=1 && \
+        rm -f /tmp/tensorrt-*.tar.gz && \
         echo "✓ TensorRT extracted successfully" && \
         ls -la /build/tensorrt/; \
     else \
-        echo "⚠️  TensorRT download failed - creating minimal structure" && \
-        echo "   In production, manually download TensorRT from:" && \
-        echo "   https://developer.nvidia.com/tensorrt" && \
+        echo "⚠️  TensorRT file not found: ${TRT_FILE}" && \
+        echo "   Creating minimal structure as fallback" && \
         mkdir -p /build/tensorrt/lib /build/tensorrt/python /build/tensorrt/bin /build/tensorrt/include; \
     fi
 
 # ====== STAGE: FFmpeg Builder with CUDA Support ======
 FROM nvidia/cuda:12.9.0-devel-ubuntu24.04 AS ffmpeg-builder
+
+# Accept build arg for downloads directory
+ARG DOWNLOADS_DIR=./downloads-cache
 
 WORKDIR /opt
 
@@ -108,27 +103,21 @@ RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git \
     && make install \
     && cd .. && rm -rf nv-codec-headers
 
-# Download FFmpeg source with retry logic
-RUN echo "=== Downloading FFmpeg source ===" && \
-    for i in 1 2 3; do \
-        echo "Download attempt $i/3..." && \
-        if git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git; then \
-            echo "Git clone successful on attempt $i"; \
-            break; \
-        else \
-            echo "Git clone failed on attempt $i" && \
-            rm -rf ffmpeg && \
-            sleep 10; \
-        fi; \
-        if [ $i -eq 3 ]; then \
-            echo "All git clone attempts failed, trying wget fallback..." && \
-            wget --timeout=60 --tries=3 -O ffmpeg.tar.gz https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz && \
-            tar -xzf ffmpeg.tar.gz && \
-            mv FFmpeg-master ffmpeg && \
-            rm ffmpeg.tar.gz && \
-            echo "FFmpeg source downloaded via wget"; \
-        fi; \
-    done
+# Copy pre-downloaded FFmpeg source
+COPY ${DOWNLOADS_DIR}/ffmpeg.tar.gz /tmp/
+
+# Extract FFmpeg source
+RUN echo "=== Extracting FFmpeg source ===" && \
+    if [ -f "/tmp/ffmpeg.tar.gz" ]; then \
+        tar -xzf /tmp/ffmpeg.tar.gz && \
+        mv FFmpeg-master ffmpeg && \
+        rm /tmp/ffmpeg.tar.gz && \
+        echo "✓ FFmpeg source extracted successfully"; \
+    else \
+        echo "FFmpeg tarball not found, trying git clone fallback..." && \
+        git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git || \
+        (echo "Failed to obtain FFmpeg source" && exit 1); \
+    fi
 
 # Configure FFmpeg (separate step to isolate configure issues) - use /usr/local prefix
 RUN cd ffmpeg && \
