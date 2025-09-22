@@ -160,7 +160,7 @@ jobs:
 
       - name: Download TensorRT for AMD64
         run: |
-          TRT_AMD64_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-10.9.0.34.Linux.x86_64.cuda-12.8.tar.gz"
+          TRT_AMD64_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.12.0/tars/TensorRT-10.12.0.36.Linux.x86_64-gnu.cuda-12.9.tar.gz"
           cd ./downloads-cache
 
           # Skip if already downloaded
@@ -181,7 +181,7 @@ jobs:
 
       - name: Download TensorRT for ARM64
         run: |
-          TRT_ARM64_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-10.9.0.34.Linux.aarch64-gnu.cuda-12.8.tar.gz"
+          TRT_ARM64_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.12.0/tars/TensorRT-10.12.0.36.Linux.aarch64-gnu.cuda-12.9.tar.gz"
           cd ./downloads-cache
 
           # Skip if already downloaded

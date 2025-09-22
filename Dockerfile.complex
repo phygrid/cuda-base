@@ -14,7 +14,7 @@ FROM nvidia/cuda:12.9.0-runtime-ubuntu24.04 AS tensorrt-builder
 
 # Re-declare args for this stage
 ARG TARGETARCH
-ARG TENSORRT_VERSION=10.9.0.34
+ARG TENSORRT_VERSION=10.12.0.36
 ARG DOWNLOADS_DIR=./downloads-cache
 
 WORKDIR /build
@@ -176,7 +176,7 @@ WORKDIR /app
 
 # Re-declare args for final stage
 ARG TARGETARCH
-ARG TENSORRT_VERSION=10.9.0.34
+ARG TENSORRT_VERSION=10.12.0.36
 ENV TENSORRT_VERSION=${TENSORRT_VERSION}
 
 # Install essential runtime dependencies + CUDA math libraries for TensorRT
