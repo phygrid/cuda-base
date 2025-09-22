@@ -143,29 +143,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Restore download cache
-        uses: actions/cache@v3
-        id: downloads-cache
-        with:
-          path: ./downloads-cache
-          key: cuda-base-downloads-${{ runner.os }}-${{ hashFiles('VERSION') }}
-          restore-keys: |
-            cuda-base-downloads-${{ runner.os }}-
-
-      - name: Create download cache directory
+      - name: Setup persistent download cache
         run: |
-          mkdir -p ./downloads-cache
-          echo "Download cache directory created"
-          ls -la ./downloads-cache || true
+          # Use a persistent location on the self-hosted runner
+          CACHE_DIR="/opt/build-cache/cuda-base"
+          mkdir -p "$CACHE_DIR"
+
+          # Create symlink to cache directory in build context
+          ln -sfn "$CACHE_DIR" ./downloads-cache
+
+          echo "Using persistent cache at: $CACHE_DIR"
+          echo "Current cache contents:"
+          ls -la "$CACHE_DIR" || true
 
       - name: Download TensorRT for AMD64
         run: |
           TRT_AMD64_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.12.0/tars/TensorRT-10.12.0.36.Linux.x86_64-gnu.cuda-12.9.tar.gz"
-          cd ./downloads-cache
+          CACHE_DIR="/opt/build-cache/cuda-base"
+          cd "$CACHE_DIR"
 
           # Skip if already downloaded
           if [ -f "tensorrt-amd64.tar.gz" ]; then
-            echo "TensorRT AMD64 already downloaded, skipping..."
+            echo "✓ TensorRT AMD64 already cached ($(ls -lh tensorrt-amd64.tar.gz | awk '{print $5}'))"
           elif [ -f "tensorrt-amd64.tar.gz.partial" ]; then
             echo "Resuming previous partial download..."
             wget -c -nv --timeout=120 --tries=5 -O tensorrt-amd64.tar.gz.partial "$TRT_AMD64_URL" && \
@@ -176,17 +175,17 @@ jobs:
               (mv tensorrt-amd64.tar.gz tensorrt-amd64.tar.gz.partial 2>/dev/null; exit 1)
           fi
 
-          echo "TensorRT AMD64: $(ls -lh tensorrt-amd64.tar.gz* 2>/dev/null || echo 'Not found')"
-          cd ..
+          cd -
 
       - name: Download TensorRT for ARM64
         run: |
           TRT_ARM64_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.12.0/tars/TensorRT-10.12.0.36.Linux.aarch64-gnu.cuda-12.9.tar.gz"
-          cd ./downloads-cache
+          CACHE_DIR="/opt/build-cache/cuda-base"
+          cd "$CACHE_DIR"
 
           # Skip if already downloaded
           if [ -f "tensorrt-arm64.tar.gz" ]; then
-            echo "TensorRT ARM64 already downloaded, skipping..."
+            echo "✓ TensorRT ARM64 already cached ($(ls -lh tensorrt-arm64.tar.gz | awk '{print $5}'))"
           elif [ -f "tensorrt-arm64.tar.gz.partial" ]; then
             echo "Resuming previous partial download..."
             wget -c -nv --timeout=120 --tries=5 -O tensorrt-arm64.tar.gz.partial "$TRT_ARM64_URL" && \
@@ -197,17 +196,24 @@ jobs:
               (mv tensorrt-arm64.tar.gz tensorrt-arm64.tar.gz.partial 2>/dev/null; exit 1)
           fi
 
-          echo "TensorRT ARM64: $(ls -lh tensorrt-arm64.tar.gz* 2>/dev/null || echo 'Not found')"
-          cd ..
+          cd -
 
       - name: Download FFmpeg source
         run: |
           FFMPEG_URL="https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz"
-          cd ./downloads-cache
+          CACHE_DIR="/opt/build-cache/cuda-base"
+          cd "$CACHE_DIR"
 
-          # Skip if already downloaded
+          # Skip if already downloaded (check if recent enough - FFmpeg updates frequently)
           if [ -f "ffmpeg.tar.gz" ]; then
-            echo "FFmpeg source already downloaded, skipping..."
+            # Check if file is older than 7 days
+            if [ $(find . -name "ffmpeg.tar.gz" -mtime +7 | wc -l) -gt 0 ]; then
+              echo "FFmpeg cache is older than 7 days, re-downloading..."
+              rm -f ffmpeg.tar.gz
+              wget -c -nv --timeout=120 --tries=5 -O ffmpeg.tar.gz "$FFMPEG_URL"
+            else
+              echo "✓ FFmpeg source already cached ($(ls -lh ffmpeg.tar.gz | awk '{print $5}'))"
+            fi
           elif [ -f "ffmpeg.tar.gz.partial" ]; then
             echo "Resuming previous partial download..."
             wget -c -nv --timeout=120 --tries=5 -O ffmpeg.tar.gz.partial "$FFMPEG_URL" && \
@@ -218,14 +224,18 @@ jobs:
               (mv ffmpeg.tar.gz ffmpeg.tar.gz.partial 2>/dev/null; exit 1)
           fi
 
-          echo "FFmpeg: $(ls -lh ffmpeg.tar.gz* 2>/dev/null || echo 'Not found')"
-          cd ..
+          cd -
 
       - name: Verify downloads
         run: |
-          echo "Verifying downloaded files..."
-          ls -la ./downloads-cache/
-          echo "Total size: $(du -sh ./downloads-cache/ | cut -f1)"
+          CACHE_DIR="/opt/build-cache/cuda-base"
+          echo "=== Cache contents ==="
+          ls -lah "$CACHE_DIR"/
+          echo ""
+          echo "Total cache size: $(du -sh "$CACHE_DIR" | cut -f1)"
+          echo ""
+          echo "=== Symlink verification ==="
+          ls -la ./downloads-cache
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

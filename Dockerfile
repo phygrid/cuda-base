@@ -19,10 +19,11 @@ ARG DOWNLOADS_DIR=./downloads-cache
 
 WORKDIR /build
 
-# Copy pre-downloaded TensorRT files
-COPY ${DOWNLOADS_DIR}/tensorrt-*.tar.gz /tmp/
+# Copy pre-downloaded TensorRT files (if they exist)
+# Docker will create empty directory if source doesn't exist
+COPY ${DOWNLOADS_DIR}/tensorrt-*.tar.g[z] /tmp/
 
-# Extract TensorRT (architecture-aware)
+# Extract TensorRT (architecture-aware) or download if not cached
 RUN set -ex && \
     # Detect architecture if TARGETARCH is not set
     if [ -z "${TARGETARCH}" ]; then \
@@ -52,16 +53,32 @@ RUN set -ex && \
     echo "Extracting TensorRT from: ${TRT_FILE}" && \
     mkdir -p /build/tensorrt && \
     \
-    # Extract pre-downloaded file
+    # Extract pre-downloaded file or download if not cached
     if [ -f "${TRT_FILE}" ]; then \
+        echo "Using cached TensorRT file" && \
         tar -xzf "${TRT_FILE}" -C /build/tensorrt --strip-components=1 && \
         rm -f /tmp/tensorrt-*.tar.gz && \
         echo "✓ TensorRT extracted successfully" && \
         ls -la /build/tensorrt/; \
     else \
-        echo "⚠️  TensorRT file not found: ${TRT_FILE}" && \
-        echo "   Creating minimal structure as fallback" && \
-        mkdir -p /build/tensorrt/lib /build/tensorrt/python /build/tensorrt/bin /build/tensorrt/include; \
+        echo "TensorRT not cached, downloading..." && \
+        case "${TARGETARCH}" in \
+            "amd64") \
+                TRT_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.12.0/tars/TensorRT-10.12.0.36.Linux.x86_64-gnu.cuda-12.9.tar.gz" \
+                ;; \
+            "arm64") \
+                TRT_URL="https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.12.0/tars/TensorRT-10.12.0.36.Linux.aarch64-gnu.cuda-12.9.tar.gz" \
+                ;; \
+        esac && \
+        if wget -nv --timeout=120 --tries=3 -O /tmp/tensorrt.tar.gz "${TRT_URL}"; then \
+            tar -xzf /tmp/tensorrt.tar.gz -C /build/tensorrt --strip-components=1 && \
+            rm -f /tmp/tensorrt.tar.gz && \
+            echo "✓ TensorRT downloaded and extracted" && \
+            ls -la /build/tensorrt/; \
+        else \
+            echo "⚠️  TensorRT download failed - creating minimal structure" && \
+            mkdir -p /build/tensorrt/lib /build/tensorrt/python /build/tensorrt/bin /build/tensorrt/include; \
+        fi; \
     fi
 
 # ====== STAGE: FFmpeg Builder with CUDA Support ======
@@ -103,7 +120,7 @@ RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git \
     && make install \
     && cd .. && rm -rf nv-codec-headers
 
-# Copy pre-downloaded FFmpeg source
+# Copy pre-downloaded FFmpeg source from persistent cache
 COPY ${DOWNLOADS_DIR}/ffmpeg.tar.gz /tmp/
 
 # Extract FFmpeg source
@@ -112,9 +129,10 @@ RUN echo "=== Extracting FFmpeg source ===" && \
         tar -xzf /tmp/ffmpeg.tar.gz && \
         mv FFmpeg-master ffmpeg && \
         rm /tmp/ffmpeg.tar.gz && \
-        echo "✓ FFmpeg source extracted successfully"; \
+        echo "✓ FFmpeg source extracted from cache"; \
     else \
-        echo "FFmpeg tarball not found, trying git clone fallback..." && \
+        echo "⚠️  FFmpeg not in cache (should not happen with persistent cache)" && \
+        echo "   Falling back to git clone..." && \
         git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git || \
         (echo "Failed to obtain FFmpeg source" && exit 1); \
     fi

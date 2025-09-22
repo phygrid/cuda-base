@@ -19,7 +19,7 @@ ARG DOWNLOADS_DIR=./downloads-cache
 
 WORKDIR /build
 
-# Copy pre-downloaded TensorRT files
+# Copy pre-downloaded TensorRT files from persistent cache
 COPY ${DOWNLOADS_DIR}/tensorrt-*.tar.gz /tmp/
 
 # Extract TensorRT (architecture-aware)
@@ -52,14 +52,15 @@ RUN set -ex && \
     echo "Extracting TensorRT from: ${TRT_FILE}" && \
     mkdir -p /build/tensorrt && \
     \
-    # Extract pre-downloaded file
+    # Extract pre-downloaded file from persistent cache
     if [ -f "${TRT_FILE}" ]; then \
         tar -xzf "${TRT_FILE}" -C /build/tensorrt --strip-components=1 && \
         rm -f /tmp/tensorrt-*.tar.gz && \
-        echo "✓ TensorRT extracted successfully" && \
+        echo "✓ TensorRT extracted successfully from cache" && \
         ls -la /build/tensorrt/; \
     else \
         echo "⚠️  TensorRT file not found: ${TRT_FILE}" && \
+        echo "   Expected file should be present in persistent cache" && \
         echo "   Creating minimal structure as fallback" && \
         mkdir -p /build/tensorrt/lib /build/tensorrt/python /build/tensorrt/bin /build/tensorrt/include; \
     fi
@@ -101,7 +102,7 @@ RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git \
     && make install \
     && cd .. && rm -rf nv-codec-headers
 
-# Copy pre-downloaded FFmpeg source
+# Copy pre-downloaded FFmpeg source from persistent cache
 COPY ${DOWNLOADS_DIR}/ffmpeg.tar.gz /tmp/
 
 # Extract and compile FFmpeg with CUDA acceleration
@@ -109,9 +110,10 @@ RUN if [ -f "/tmp/ffmpeg.tar.gz" ]; then \
         tar -xzf /tmp/ffmpeg.tar.gz && \
         mv FFmpeg-master ffmpeg && \
         rm /tmp/ffmpeg.tar.gz && \
-        echo "✓ FFmpeg source extracted successfully"; \
+        echo "✓ FFmpeg source extracted from cache"; \
     else \
-        echo "FFmpeg tarball not found, trying git clone fallback..." && \
+        echo "⚠️  FFmpeg not in cache (should not happen with persistent cache)" && \
+        echo "   Falling back to git clone..." && \
         git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git || \
         (echo "Failed to obtain FFmpeg source" && exit 1); \
     fi \
