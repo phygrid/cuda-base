@@ -148,6 +148,9 @@ RUN if [ -f "/tmp/ffmpeg.tar.gz" ]; then \
         --enable-shared \
     && make -j$(nproc) \
     && make install \
+    && export LD_LIBRARY_PATH=/opt/ffmpeg/lib:$LD_LIBRARY_PATH \
+    && ldconfig /opt/ffmpeg/lib \
+    && /opt/ffmpeg/bin/ffmpeg -version 2>&1 | head -3 \
     && cd .. && rm -rf ffmpeg
 
 # ====== STAGE: PyAV Builder ======
@@ -251,6 +254,11 @@ RUN if [ -d "/opt/pyav" ] && [ "$(ls -A /opt/pyav/*.whl 2>/dev/null)" ]; then \
 ENV PATH="/opt/ffmpeg/bin:$PATH" \
     PKG_CONFIG_PATH="/opt/ffmpeg/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig" \
     LD_LIBRARY_PATH="/opt/ffmpeg/lib:$LD_LIBRARY_PATH"
+
+# Update library cache for FFmpeg
+RUN echo "/opt/ffmpeg/lib" > /etc/ld.so.conf.d/ffmpeg.conf && \
+    ldconfig && \
+    echo "Library cache updated for FFmpeg"
 
 # Install minimal common Python packages (no caching for smaller image)
 RUN python -m pip install --no-cache-dir --break-system-packages \

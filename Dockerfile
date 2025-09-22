@@ -168,6 +168,9 @@ RUN cd ffmpeg && \
     test -f /usr/local/ffmpeg/bin/ffmpeg || (echo "ERROR: ffmpeg binary missing at /usr/local/ffmpeg/bin/ffmpeg" && exit 1) && \
     test -d /usr/local/ffmpeg/lib || (echo "ERROR: ffmpeg lib directory missing at /usr/local/ffmpeg/lib" && exit 1) && \
     ls -la /usr/local/ffmpeg/bin/ && \
+    # Set library path for verification
+    export LD_LIBRARY_PATH=/usr/local/ffmpeg/lib:$LD_LIBRARY_PATH && \
+    ldconfig /usr/local/ffmpeg/lib && \
     /usr/local/ffmpeg/bin/ffmpeg -version 2>&1 | head -3 && \
     echo "=== FFmpeg build SUCCESSFUL ===" && \
     cd .. && rm -rf ffmpeg
@@ -280,6 +283,11 @@ RUN echo "Installing custom PyAV with CUDA FFmpeg support..." && \
 ENV PATH="/opt/ffmpeg/bin:$PATH" \
     PKG_CONFIG_PATH="/opt/ffmpeg/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig" \
     LD_LIBRARY_PATH="/opt/ffmpeg/lib:$LD_LIBRARY_PATH"
+
+# Update library cache for FFmpeg
+RUN echo "/opt/ffmpeg/lib" > /etc/ld.so.conf.d/ffmpeg.conf && \
+    ldconfig && \
+    echo "Library cache updated for FFmpeg"
 
 # Install minimal common Python packages (no caching for smaller image)
 RUN python -m pip install --no-cache-dir --break-system-packages \
